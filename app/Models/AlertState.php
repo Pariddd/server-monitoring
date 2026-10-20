@@ -20,6 +20,7 @@ class AlertState extends Model
         'last_value',
         'last_notified_at',
         'last_evaluated_at',
+        'last_sample_at' => 'datetime',
     ];
 
     protected function casts(): array
@@ -28,6 +29,7 @@ class AlertState extends Model
             'state_since' => 'datetime',
             'breach_at' => 'datetime',
             'last_value' => 'float',
+            'last_sample_at' => 'datetime',
             'last_notified_at' => 'datetime',
             'last_evaluated_at' => 'datetime',
         ];
