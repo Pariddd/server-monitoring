@@ -8,6 +8,7 @@ use App\Models\AlertRule;
 use App\Models\AlertState;
 use App\Models\Metric;
 use App\Models\Source;
+use App\Jobs\SendTelegramNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -159,7 +160,7 @@ class AlertEngine
     {
         $now = CarbonImmutable::now('UTC');
 
-        AlertNotification::create([
+        $notification = AlertNotification::create([
             'alert_state_id' => $state->id,
             'alert_event_id' => $eventId,
             'kind' => $kind,
@@ -170,7 +171,7 @@ class AlertEngine
             't_queued' => $now,
         ]);
 
-        // Tahap 5: dispatch job pengiriman Telegram di sini.
+        SendTelegramNotification::dispatch($notification->id)->afterCommit();
 
         $state->last_notified_at = $now;
         $state->save();
