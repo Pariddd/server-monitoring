@@ -34,12 +34,12 @@ class MessageFormatter
         return implode("\n", [
             "{$title} {$rule->name}",
             'Sumber: ' . $source->name . ($tag !== '' ? " ({$tag})" : ''),
-            'Nilai: ' . $this->value($rule, $value),
-            $timeLabel . ': ' . ($dataAt ? $dataAt->copy()->utc()->format('Y-m-d H:i:s') . 'Z' : '-'),
+            'Nilai: ' . $this->formatValue($rule, $value),
+            $timeLabel . ': ' . ($dataAt ? $dataAt->copy()->setTimezone('Asia/Jakarta')->format('Y-m-d H:i:s') . ' WIB' : '-'),
         ]);
     }
 
-    private function value(AlertRule $rule, ?float $v): string
+    public function formatValue(AlertRule $rule, ?float $v): string
     {
         if ($v === null) {
             return '-';

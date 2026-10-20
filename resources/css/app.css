@@ -1,9 +1,196 @@
-@import 'tailwindcss';
+@import "@fontsource/barlow-semi-condensed/400.css";
+@import "@fontsource/barlow-semi-condensed/500.css";
+@import "@fontsource/barlow-semi-condensed/600.css";
+@import "@fontsource/barlow-semi-condensed/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "tailwindcss";
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/* Token desain dari mockup */
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: "Barlow Semi Condensed", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+    --color-ground: #e9ecec;
+    --color-panel: #f8f9f9;
+    --color-graphite: #1e2528;
+    --color-muted: #5b676c;
+    --color-body: #3a464c;
+    --color-hairline: #d3d8da;
+    --color-control: #748187;
+    --color-trace: #0f5c73;
+
+    --color-normal: #1e6b43;
+    --color-normal-lamp: #34a06a;
+    --color-normal-tint: #e1eee6;
+    --color-pending: #7c5300;
+    --color-pending-lamp: #e0a526;
+    --color-pending-tint: #fbefd0;
+    --color-firing: #b02a14;
+    --color-firing-lamp: #e5482d;
+    --color-firing-tint: #f7e4df;
+    --color-firing-border: #e2b7ac;
+    --color-resolved: #46606f;
+    --color-resolved-lamp: #7f9bab;
+}
+
+@layer components {
+    .lamp {
+        position: relative;
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        flex: 0 0 auto;
+        border-radius: 9999px;
+        box-shadow: 0 0 0 1.5px #5b676c; /* bezel: kontras batas >= 3:1 */
+    }
+    .lamp-fire::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 9999px;
+        background: #e5482d;
+        animation: fire-ring 2.4s ease-out infinite;
+    }
+    .led {
+        animation: ledblink 10s linear infinite;
+    }
+    .poll-run {
+        animation: pollfill 10s linear 1 both;
+    }
+    .flash-once {
+        animation: flash 1.6s ease-out 1;
+    }
+}
+
+@keyframes fire-ring {
+    0% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+    70%,
+    100% {
+        transform: scale(2.6);
+        opacity: 0;
+    }
+}
+@keyframes ledblink {
+    0% {
+        opacity: 1;
+    }
+    2% {
+        opacity: 0.12;
+    }
+    5%,
+    100% {
+        opacity: 1;
+    }
+}
+@keyframes pollfill {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+@keyframes flash {
+    0% {
+        box-shadow: inset 0 0 0 3px #e0a526;
+        background-color: #fbefd0;
+    }
+    100% {
+        box-shadow: inset 0 0 0 0 rgba(224, 165, 38, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lamp-fire::after,
+    .led,
+    .poll-run,
+    .flash-once {
+        animation: none !important;
+    }
+}
+
+@layer components {
+    .segb {
+        transition:
+            flex-grow 0.4s ease-out,
+            margin 0.4s ease-out,
+            padding 0.4s ease-out,
+            border-width 0.4s ease-out,
+            box-shadow 0.2s ease-out;
+    }
+    .pupil {
+        animation: scan 6s ease-in-out infinite;
+        transform-box: fill-box;
+    }
+    .pupil-fast {
+        animation: scan 1.5s ease-in-out infinite;
+        transform-box: fill-box;
+    }
+    .eye {
+        animation: eyeblink 5s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+    .led-fast {
+        animation: ledblink 1.2s linear infinite;
+    }
+}
+
+@keyframes scan {
+    0%,
+    100% {
+        transform: translateX(-9px);
+    }
+    50% {
+        transform: translateX(9px);
+    }
+}
+@keyframes eyeblink {
+    0%,
+    92%,
+    100% {
+        transform: scaleY(1);
+    }
+    96% {
+        transform: scaleY(0.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .segb {
+        transition: none;
+    }
+    .pupil,
+    .pupil-fast,
+    .eye,
+    .led-fast {
+        animation: none !important;
+    }
+}
+
+@layer components {
+    .trace {
+        animation: trace 2.4s linear infinite;
+    }
+}
+@keyframes trace {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-52px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .trace {
+        animation: none !important;
+    }
 }
