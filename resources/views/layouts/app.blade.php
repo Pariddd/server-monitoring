@@ -9,6 +9,9 @@
 </head>
 <body class="min-h-screen bg-ground font-sans text-[15px] text-graphite antialiased">
 
+{{-- Halaman yang tidak melakukan polling (mis. Aturan) cukup menulis @section('no_polling', '1') --}}
+@php($polling = ! View::hasSection('no_polling'))
+
 <header class="bg-graphite text-panel">
     <div class="mx-auto flex min-h-14 max-w-[1320px] flex-wrap items-center gap-x-7 px-4 sm:px-8">
         <a href="{{ route('dashboard') }}" class="flex items-center gap-2.5 text-panel no-underline">
@@ -30,40 +33,46 @@
             @endforeach
         </nav>
 
-                <div x-data class="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm text-[#B9C4C8]">
-            <span>Data terakhir
-                <span class="font-mono font-medium text-white" x-text="$fmt.clock($store.poll.lastOkAt)">–</span> WIB
-                <template x-if="$store.poll.status === 'error'">
-                    <span class="font-semibold text-pending-lamp"> · polling gagal, data tertahan</span>
-                </template>
-            </span>
-            <label class="flex items-center gap-1.5">
-                <span>polling</span>
-                <select :value="$store.poll.intervalMs" @change="$store.poll.setInterval($event.target.value)"
-                        class="min-h-11 cursor-pointer rounded-md border border-[#556166] bg-graphite px-2 font-semibold text-white">
-                    <template x-for="[ms, label] in $store.poll.options" :key="ms">
-                        <option :value="ms" x-text="label" :selected="ms === $store.poll.intervalMs"></option>
+        <div x-data class="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm text-[#B9C4C8]">
+            @if ($polling)
+                <span>Data terakhir
+                    <span class="font-mono font-medium text-white" x-text="$fmt.clock($store.poll.lastOkAt)">–</span> WIB
+                    <template x-if="$store.poll.status === 'error'">
+                        <span class="font-semibold text-pending-lamp"> · polling gagal, data tertahan</span>
                     </template>
-                </select>
-            </label>
-            <button type="button" @click="$dispatch('poll-refresh')"
-                    class="min-h-11 cursor-pointer rounded-md border border-[#556166] px-3 font-semibold text-white hover:bg-[#2B3438]">
-                Perbarui
-            </button>
+                </span>
+                <label class="flex items-center gap-1.5">
+                    <span>polling</span>
+                    <select :value="$store.poll.intervalMs" @change="$store.poll.setInterval($event.target.value)"
+                            class="min-h-11 cursor-pointer rounded-md border border-[#556166] bg-graphite px-2 font-semibold text-white">
+                        <template x-for="[ms, label] in $store.poll.options" :key="ms">
+                            <option :value="ms" x-text="label" :selected="ms === $store.poll.intervalMs"></option>
+                        </template>
+                    </select>
+                </label>
+                <button type="button" @click="$dispatch('poll-refresh')"
+                        class="min-h-11 cursor-pointer rounded-md border border-[#556166] px-3 font-semibold text-white hover:bg-[#2B3438]">
+                    Perbarui
+                </button>
+            @endif
             <span x-data="utcClock" class="font-mono" x-text="now + ' WIB'" aria-label="Jam WIB"></span>
         </div>
     </div>
 </header>
 
-{{-- Garis polling: terisi 10 dtk per siklus; berhenti dan kuning saat gagal --}}
-<div class="h-[3px] overflow-hidden bg-[#2B3438]" aria-hidden="true">
-    <div x-data
-         x-effect="const c = $store.poll.cycle, s = $store.poll.status;
-                   $el.classList.remove('poll-run');
-                   if (s === 'ok') { void $el.offsetWidth; $el.classList.add('poll-run'); }"
-         :class="$store.poll.status === 'error' ? 'bg-pending-lamp' : 'bg-[#7FB8C9]'"
-          class="h-full origin-left" :style="`animation-duration:${$store.poll.intervalMs}ms`"></div>
-</div>
+@if ($polling)
+    {{-- Garis polling: terisi selama satu interval polling; berhenti dan kuning saat gagal --}}
+    <div class="h-[3px] overflow-hidden bg-[#2B3438]" aria-hidden="true">
+        <div x-data
+             x-effect="const c = $store.poll.cycle, s = $store.poll.status;
+                       $el.classList.remove('poll-run');
+                       if (s === 'ok') { void $el.offsetWidth; $el.classList.add('poll-run'); }"
+             :class="$store.poll.status === 'error' ? 'bg-pending-lamp' : 'bg-[#7FB8C9]'"
+             class="h-full origin-left" :style="`animation-duration:${$store.poll.intervalMs}ms`"></div>
+    </div>
+@else
+    <div class="h-[3px] bg-[#2B3438]" aria-hidden="true"></div>
+@endif
 
 <main class="mx-auto max-w-[1320px] px-4 pb-14 pt-6 sm:px-8">
     @yield('content')
