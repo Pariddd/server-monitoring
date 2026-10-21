@@ -228,16 +228,8 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 
 
 ## 18. Firmware ESP32 + DHT22 + OLED [R — lolos kompilasi; belum diuji di perangkat]
-Lokasi: `firmware/esp32-dht22/` (panduan lengkap: `firmware/esp32-dht22/README.md`).
-
-| Berkas | Isi |
-|---|---|
-| `esp32-dht22.ino` | Berkas sketch Arduino (komentar + kepala); kode ada di `.cpp` agar tidak bergantung pada pembuatan prototipe otomatis `.ino` |
-| `app.cpp` | `setup()`/`loop()`: baca sensor, NTP, antrean, kirim HTTP, WiFi |
-| `display.cpp` / `display.h` | Tampilan OLED (U8g2) sebagai task FreeRTOS di core 0 |
-| `shared_state.h` | Status bersama antar-task (dilindungi critical section `portMUX`) |
-| `config.h` | Pin, interval, OLED (tanpa rahasia) |
-| `secrets.example.h` | Templat WiFi, `SERVER_URL`, `SOURCE_TOKEN`; `secrets.h` di-gitignore |
+Lokasi: `firmware/esp32-dht22/esp32-dht22.ino` — **satu berkas** (permintaan pengguna 21 Okt; sebelumnya dipecah ke beberapa `.cpp/.h`). Panduan: `firmware/esp32-dht22/README.md`.
+Susunan berkas: (1) RAHASIA — WiFi, `SERVER_URL`, `SOURCE_TOKEN`; dipakai dari `secrets.h` bila berkas itu ada (`__has_include`, `secrets.h` di-gitignore), (2) PENGATURAN, (3) tipe data & global (semua tipe sebelum fungsi pertama agar prototipe otomatis Arduino IDE benar; tanpa template), (4)–(8) status bersama, antrean, sensor, WiFi/NTP, kirim HTTP, (9) OLED (task FreeRTOS core 0), (10) `setup()`/`loop()`. Status bersama dilindungi critical section `portMUX`.
 
 - Perangkat: ESP32 Dev Module (ESP32-WROOM-32); DHT22 modul 3 pin → GPIO4 (3V3); OLED 0.96" I2C 4 pin → SDA GPIO21, SCL GPIO22 (3V3), alamat 0x3C, driver SSD1306/SSD1315 (opsi SH1106 lewat `OLED_DRIVER_SH1106`).
 - Library: core esp32 (Espressif) 3.3.12, DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15, U8g2 2.37.1.
@@ -245,6 +237,6 @@ Lokasi: `firmware/esp32-dht22/` (panduan lengkap: `firmware/esp32-dht22/README.m
 - Respons: 200 → hapus dari antrean; 422 → buang (ditolak permanen); 401/403 → tetap diantre + status "TOKEN?"; lainnya (429, 5xx, timeout −1) → coba lagi siklus berikut. Timeout: connect 3 dtk, respons 5 dtk.
 - WiFi: auto-reconnect + `WiFi.reconnect()` tiap 30 dtk saat putus; restart ESP32 bila putus > 5 menit. NTP: `id.pool.ntp.org`, `pool.ntp.org`; dianggap sinkron bila epoch > 1.700.000.000.
 - OLED: halaman SUHU (animasi termometer, skala 15–35 °C) → KELEMBABAN (animasi tetes) → STATUS (WiFi, server, jam WIB/antrean), masing-masing 5 dtk; halaman "DHT22 ERROR" menggantikan SUHU/KELEMBABAN saat sensor gagal. Pita atas 16 px: label + ikon WiFi, titik server (penuh = terkirim), jumlah antrean/`!`. Font: Terminus bold 8×16 (label), Helvetica Bold 24 px (angka, ±3,7 mm di panel 0,96"). Anti burn-in: geser 0–2 px tiap siklus, kontras 40/255. OLED tidak menampilkan status alarm (sumber kebenaran tunggal = server). OLED dicek lewat I2C saat boot; bila tidak ada, firmware tetap jalan.
-- Verifikasi (21 Okt 2026, lingkungan replika): `arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all` → tanpa error/peringatan dari kode proyek; program 1.067.860 byte (81% dari 1.310.720), RAM global 51.912 byte (15%). Varian `USE_OLED 0` (78%) dan `OLED_DRIVER_SH1106 1` juga lolos.
-- Simulasi tampilan: fungsi gambar `display.cpp` yang sama dijalankan di PC memakai buffer SSD1306 asli U8g2 → `docs/gambar/oled-simulasi-*.png/gif` (bukan foto perangkat; foto asli diambil setelah uji perangkat).
+- Verifikasi (21 Okt 2026, lingkungan replika, memakai ctags Arduino 5.8-arduino11 untuk prototipe `.ino`): `arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all` → tanpa error/peringatan dari kode proyek; program 1.068.364 byte (81% dari 1.310.720), RAM global 51.912 byte (15%). Varian `USE_OLED 0` (80%), `OLED_DRIVER_SH1106 1`, dan jalur `secrets.h` juga lolos (URL dari `secrets.h` terbukti terpakai di biner).
+- Simulasi tampilan: fungsi gambar OLED yang sama (isi bagian 9 identik dengan versi uji simulasi) dijalankan di PC memakai buffer SSD1306 asli U8g2 → `docs/gambar/oled-simulasi-*.png/gif` (bukan foto perangkat; foto asli diambil setelah uji perangkat).
 - Belum diuji: pembacaan sensor nyata, koneksi WiFi/NTP, pengiriman ke H1, tampilan di panel asli, perilaku antrean saat WiFi diputus.

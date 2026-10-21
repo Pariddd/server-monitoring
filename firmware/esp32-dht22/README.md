@@ -26,7 +26,9 @@ Modul DHT22 3 pin sudah memiliki resistor pull-up. Pakai 3V3 (bukan 5V/VIN) untu
    - **Adafruit Unified Sensor** (Adafruit) — dibutuhkan DHT sensor library
    - **U8g2** (olikraus)
 3. Versi yang dipakai saat uji kompilasi: core esp32 3.3.12, DHT sensor library 1.4.7,
-   Adafruit Unified Sensor 1.1.15, U8g2 2.37.1 → hasil: program 1.067.860 byte (81%), RAM global 51.912 byte (15%).
+   Adafruit Unified Sensor 1.1.15, U8g2 2.37.1 → hasil: program 1.068.364 byte (81%), RAM global 51.912 byte (15%).
+
+Seluruh kode ada dalam **satu berkas**: `esp32-dht22.ino` (rahasia, pengaturan, sensor, jaringan, OLED).
 
 ## 3. Persiapan server (laptop H1)
 
@@ -49,12 +51,20 @@ New-NetFirewallRule -DisplayName "Laravel 8000 (ESP32)" -Direction Inbound -Prot
 
 ## 4. Konfigurasi firmware
 
-1. Salin `secrets.example.h` menjadi **`secrets.h`** (di folder yang sama), lalu isi:
-   - `WIFI_SSID`, `WIFI_PASSWORD`
-   - `SERVER_URL` → `http://<IPv4-laptop>:8000/api/ingest/esp32`
-   - `SOURCE_TOKEN` → token dari `source:create`
-2. `secrets.h` sudah masuk `.gitignore` — **jangan di-commit**.
-3. Pengaturan lain di `config.h` (pin, interval, OLED). Tidak berisi rahasia.
+Isi bagian **"1. RAHASIA"** di awal `esp32-dht22.ino`:
+- `WIFI_SSID`, `WIFI_PASSWORD`
+- `SERVER_URL` → `http://<IPv4-laptop>:8000/api/ingest/esp32`
+- `SOURCE_TOKEN` → token dari `source:create`
+
+**Jangan sampai password WiFi dan token ter-push ke GitHub.** Pilih salah satu:
+- **Cara A (disarankan):** salin folder `esp32-dht22` ke folder sketch Arduino di luar repo
+  (mis. `Documents\Arduino\esp32-dht22`), isi rahasia di salinan itu, upload dari sana.
+  Berkas di repo tetap berisi contoh.
+- **Cara B:** biarkan `.ino` berisi contoh, lalu buat berkas `secrets.h` di folder yang sama berisi
+  empat `#define` di atas. Bila `secrets.h` ada, nilainya otomatis dipakai; `secrets.h` sudah
+  masuk `.gitignore`.
+
+Pengaturan lain (pin, interval, OLED) ada di bagian **"2. PENGATURAN"** di berkas yang sama.
 
 ## 5. Upload dan cek
 
@@ -99,11 +109,12 @@ mengurangi burn-in.
 
 | Gejala | Penyebab / solusi |
 |---|---|
-| Serial: `[OLED] tidak ditemukan di alamat 0x3C` | Cek kabel SDA/SCL; coba `OLED_I2C_ADDR 0x3D` di `config.h` |
+| Kompilasi error `multiple definition of setup` | Masih ada berkas lama `app.cpp`/`display.cpp` di folder; hapus, sisakan hanya `esp32-dht22.ino` |
+| Serial: `[OLED] tidak ditemukan di alamat 0x3C` | Cek kabel SDA/SCL; coba `OLED_I2C_ADDR 0x3D` di bagian PENGATURAN |
 | OLED menyala tetapi gambar bergeser/berantakan | Chip SH1106: ubah `OLED_DRIVER_SH1106 1` |
 | `[HTTP] -1` | Server tidak terjangkau: cek `SERVER_URL`, server jalan dengan `--host=0.0.0.0`, firewall port 8000 |
 | `[HTTP] 401` | Token salah atau sumber nonaktif |
 | `[HTTP] 403` | Token milik host (Telegraf), bukan ESP32 |
 | `[HTTP] 422` + "Periksa sinkronisasi NTP" | Jam ESP32 belum benar; cek internet WiFi |
 | `[DHT22] pembacaan gagal` | Cek kabel DATA ke GPIO4 dan daya 3V3 |
-| Tanpa OLED | Ubah `USE_OLED 0` di `config.h` |
+| Tanpa OLED | Ubah `USE_OLED 0` di bagian PENGATURAN |
