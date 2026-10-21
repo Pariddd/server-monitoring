@@ -49,6 +49,14 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Rate limit: batas per IP diperiksa SEBELUM token (lapisan pertama terhadap banjir permintaan), batas per sumber SESUDAH token. Konsekuensi: token salah ikut menghabiskan kuota IP.
 - Token/chat Telegram kosong = error sementara (diulang ≤ 30 menit), bukan gagal permanen.
 
+## Fase ESP32 (diputuskan 21 Oktober 2026)
+- Perangkat: ESP32 Dev Module (ESP32-WROOM-32), DHT22 modul 3 pin (DATA → GPIO4, VCC 3V3), Arduino IDE dengan core "esp32 by Espressif Systems" 3.3.12. OLED 0.96" I2C 4 pin (chip belum diketahui; default SSD1306, opsi SH1106).
+- Sensor tetap DHT22 sesuai rancangan (SHT31/SHT40 lebih akurat, tetapi mengganti sensor berarti mengubah proposal).
+- Firmware: baca tiap 30 dtk (median 3 bacaan berjarak 2,5 dtk), waktu NTP UTC (tidak mengirim sebelum tersinkron), HTTP POST JSON `{temperature, humidity, ts}` + Bearer token, buffer RAM 20 data (±10 menit) dikirim ulang dari yang tertua, sambung ulang WiFi dan restart bila gagal > 5 menit, rahasia di `secrets.h` (gitignore), kode di `firmware/esp32-dht22/`.
+- Keamanan: server dibuka ke LAN (`--host=0.0.0.0`) tetapi dashboard dibatasi ke komputer server (opsi 1: middleware `RestrictToLocal`, `DASHBOARD_ALLOWED_IPS`). Batasan: ESP32 mengirim lewat HTTP tanpa TLS di LAN (token tidak terenkripsi di jaringan lokal); data buffer yang tiba > 2 menit terlambat disimpan tetapi tidak dievaluasi alarm.
+- OLED (disetujui 21 Okt): satu informasi per halaman agar terbaca di layar kecil — SUHU (ikon termometer beranimasi) → KELEMBABAN (ikon tetes beranimasi) → STATUS, masing-masing 5 dtk; teks terkecil ±11 px, angka ±24 px. OLED hanya menampilkan nilai mentah + status koneksi, TIDAK status alarm (agar tidak ada dua sumber kebenaran dengan ambang di server). Task tampilan terpisah (FreeRTOS) agar animasi dan pengiriman tidak saling menghambat. Bisa dimatikan (`USE_OLED 0`). Alasan menambah OLED (di luar rancangan awal): pembacaan lokal di ruang server tetap tersedia saat jaringan/server bermasalah; perlu dicantumkan di daftar perangkat Bab 3.
+- Saran operasional: IP tetap untuk laptop (DHCP reservation) karena alamat server ditulis di firmware.
+
 ## Proses permanen / otomatis (Tahap 9) — DITUNDA (diputuskan 21 Oktober 2026)
 - Untuk tahap sempro (fokus Bab 1–3), sistem tetap dijalankan manual (4 terminal). Otomatisasi baru dikerjakan menjelang seminar hasil (semhas) dan sidang.
 - Rancangan yang sudah dianalisis (belum diputuskan): web server Apache + mod_php (PHP TS) sebagai service, scheduler dan worker antrean sebagai service lewat WinSW, MySQL harus jalan tanpa login. Alasan: `artisan serve` menurut dokumentasi PHP tidak untuk produksi, single-thread, dan multi-worker tidak didukung di Windows; antrean yang mati > 30 menit menggagalkan notifikasi.

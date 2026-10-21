@@ -7,6 +7,14 @@ return [
     'max_age_seconds' => 86400,           // tolak data lebih tua dari 24 jam
   ],
 
+  // Alamat yang boleh membuka halaman web (dashboard, Aturan, data polling).
+  // Default hanya komputer server. Contoh menambah satu laptop lain atau satu subnet:
+  // DASHBOARD_ALLOWED_IPS="127.0.0.1,::1,192.168.1.25" atau "127.0.0.1,::1,192.168.1.0/24"
+  // API ingest (/api/ingest/*) tidak terpengaruh; dilindungi token per sumber.
+  'dashboard' => [
+    'allowed_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('DASHBOARD_ALLOWED_IPS', '127.0.0.1,::1'))))),
+  ],
+
   // Satu entri per measurement Telegraf.
   // tag_key: tag yang dipakai; tag_pattern: hanya instance yang cocok yang disimpan; store_tag: simpan nilai tag atau ''.
   'telegraf' => [

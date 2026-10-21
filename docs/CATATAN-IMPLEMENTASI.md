@@ -103,7 +103,7 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 - Respons API selalu JSON untuk `api/*`; status 400/413/422 tidak di-retry Telegraf.
 - `TelegrafMapper` memetakan metrik Telegraf ke metrik internal (`config/monitoring.php`).
 - `SourcePresence` memperbarui `last_seen_at`, mengabaikan IP loopback (akibatnya IP H1 tidak terisi otomatis).
-- Dashboard: form dilindungi CSRF; **dashboard belum memiliki autentikasi** (batasan); `serve` hanya di 127.0.0.1.
+- Dashboard: form dilindungi CSRF; **dashboard belum memiliki login** (batasan). Sejak 21 Okt (persiapan ESP32): semua route web (`/`, `/servers/*`, `/rules`, `/data/*`) melewati middleware `RestrictToLocal` (ditambahkan ke grup `web` di `bootstrap/app.php`) → hanya alamat di `DASHBOARD_ALLOWED_IPS` (default `127.0.0.1,::1`, mendukung CIDR) yang dapat membuka dashboard; selain itu 403. IP diambil dari REMOTE_ADDR (tanpa trusted proxy), sehingga `X-Forwarded-For` palsu tidak bisa melewatinya. API `/api/ingest/*` tidak terpengaruh (dilindungi token). Dengan ini server boleh dijalankan `php artisan serve --host=0.0.0.0` agar ESP32 di LAN dapat mengirim data.
 - Token tidak pernah dibagikan di chat; `.env` tidak di-commit.
 
 ## 6. Mesin status (state machine) [V]
@@ -192,7 +192,8 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 - Selesai: 1–6 (fondasi, ingest, Telegraf, alerting, Telegram, latensi), 7a–7e (dashboard + Aturan; di-commit dan di-push ke GitHub 21 Okt).
 - Tahap 8 (pengujian otomatis): 114 tes lolos di H1 (§17); di-commit dan di-push (dba81f1).
 - Tahap 9 (proses permanen) DITUNDA sampai menjelang semhas/sidang (lihat KEPUTUSAN.md); selama sempro sistem dijalankan manual.
-- Berikutnya: fase ESP32 → (menjelang semhas) Tahap 9 → persiapan & pengujian resmi.
+- Fase ESP32 dimulai 21 Okt malam: sisi server disiapkan (pembatasan dashboard lokal); firmware + OLED dibuat dan lolos kompilasi (§18); menunggu uji di perangkat.
+- Berikutnya: firmware ESP32 → (menjelang semhas) Tahap 9 → persiapan & pengujian resmi.
 
 ## 16. Temuan terbuka
 - Sisa [CEK]: lokasi `telegraf.exe` untuk tes manual (lihat `PERINTAH.md` §9).
@@ -216,10 +217,34 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 | `tests/Feature/Dashboard/RulesPageTest.php` | halaman Aturan tanpa kontrol polling, simpan & label, 13 kasus validasi ditolak (termasuk uji 7e 90/95 dan durasi 5), 5 batas sah, ambang layanan tak bisa diubah, id tak dikenal, sakelar nonaktif, reset | 24 |
 | `tests/Feature/Dashboard/DashboardTest.php` | halaman Ringkasan/Detail, JSON `/data/summary` & `/data/servers/{name}`, 404 | 5 |
 | `tests/Unit/ConditionsTest.php` | operator `>` `<` `!=` `==` (batas tidak termasuk, toleransi float), operator tak dikenal, format angka label | 14 |
-| **Total** | | **114 tes, 757 asersi** |
+| `tests/Feature/Dashboard/LocalAccessTest.php` | dashboard hanya dari 127.0.0.1/::1, 7 halaman/aksi ditolak dari LAN (403), aturan tidak berubah saat ditolak, X-Forwarded-For palsu, DASHBOARD_ALLOWED_IPS (CIDR), API ESP32 tetap diterima dari LAN | 13 |
+| **Total** | | **127 tes, 774 asersi** (114 per 21 Okt sore + 13 akses lokal) |
 
 - **Hasil di H1 (21 Okt 2026, 21:42 WIB): `php artisan test` → 114 passed (757 assertions), durasi 36,65 dtk** (Windows, PHP 8.4.25 ZTS, MySQL DBngin, database `servermonitoring_test`). Tes terlama: tes pertama Feature 6,71 dtk (termasuk migrasi awal `RefreshDatabase`), blokir HTTP 3,75 dtk, uji akhir-ke-akhir 1,25 dtk; sisanya < 1 dtk.
+- Penambahan 21 Okt malam (`LocalAccessTest`, 13 tes): lolos di replika, total 127 tes / 774 asersi; **menunggu dijalankan ulang di H1**.
 - Hasil di lingkungan replika (21 Okt 2026): PHP 8.4.26, MySQL 8.0.46, Laravel 13.38.0, dependensi dari `composer.lock` proyek → **114 lolos, 0 gagal, ±7 dtk**; lolos juga dalam urutan acak (`--order-by=random`, 2×).
 - Bukti tes regresi benar-benar mendeteksi bug (mutation check manual): mengembalikan kode bug #6 → 2 tes gagal; bug #10 → 1 tes gagal (`'10:00:45'` ≠ `'10:00:44'`); menghapus cast `last_sample_at` (bug #2) → 2 tes gagal; tanpa perbaikan bug #12 → tes rate limit gagal.
 - Catatan metodologi untuk Bab 4: pengujian otomatis melengkapi (bukan menggantikan) pengujian black-box manual dan pengukuran latensi; tes membuktikan logika pada kasus batas yang sulit dibuat manual (429, 4xx, data terlambat, durasi 59 vs 60 dtk). Tes memakai data sintetis dan Telegram palsu, sehingga TIDAK mengukur latensi nyata.
 
+
+## 18. Firmware ESP32 + DHT22 + OLED [R — lolos kompilasi; belum diuji di perangkat]
+Lokasi: `firmware/esp32-dht22/` (panduan lengkap: `firmware/esp32-dht22/README.md`).
+
+| Berkas | Isi |
+|---|---|
+| `esp32-dht22.ino` | Berkas sketch Arduino (komentar + kepala); kode ada di `.cpp` agar tidak bergantung pada pembuatan prototipe otomatis `.ino` |
+| `app.cpp` | `setup()`/`loop()`: baca sensor, NTP, antrean, kirim HTTP, WiFi |
+| `display.cpp` / `display.h` | Tampilan OLED (U8g2) sebagai task FreeRTOS di core 0 |
+| `shared_state.h` | Status bersama antar-task (dilindungi critical section `portMUX`) |
+| `config.h` | Pin, interval, OLED (tanpa rahasia) |
+| `secrets.example.h` | Templat WiFi, `SERVER_URL`, `SOURCE_TOKEN`; `secrets.h` di-gitignore |
+
+- Perangkat: ESP32 Dev Module (ESP32-WROOM-32); DHT22 modul 3 pin → GPIO4 (3V3); OLED 0.96" I2C 4 pin → SDA GPIO21, SCL GPIO22 (3V3), alamat 0x3C, driver SSD1306/SSD1315 (opsi SH1106 lewat `OLED_DRIVER_SH1106`).
+- Library: core esp32 (Espressif) 3.3.12, DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15, U8g2 2.37.1.
+- Alur tiap 30 dtk: DHT22 dibaca 3× berjarak 2,5 dtk → median (pembulatan 0,1) → bila jam NTP tersinkron (UTC), masuk antrean RAM (ring buffer 20) → dikirim dari yang tertua `POST /api/ingest/esp32` `{temperature, humidity, ts}` + `Authorization: Bearer`; maks 10 kirim per siklus; berhenti pada kegagalan pertama agar urutan terjaga.
+- Respons: 200 → hapus dari antrean; 422 → buang (ditolak permanen); 401/403 → tetap diantre + status "TOKEN?"; lainnya (429, 5xx, timeout −1) → coba lagi siklus berikut. Timeout: connect 3 dtk, respons 5 dtk.
+- WiFi: auto-reconnect + `WiFi.reconnect()` tiap 30 dtk saat putus; restart ESP32 bila putus > 5 menit. NTP: `id.pool.ntp.org`, `pool.ntp.org`; dianggap sinkron bila epoch > 1.700.000.000.
+- OLED: halaman SUHU (animasi termometer, skala 15–35 °C) → KELEMBABAN (animasi tetes) → STATUS (WiFi, server, jam WIB/antrean), masing-masing 5 dtk; halaman "DHT22 ERROR" menggantikan SUHU/KELEMBABAN saat sensor gagal. Pita atas 16 px: label + ikon WiFi, titik server (penuh = terkirim), jumlah antrean/`!`. Font: Terminus bold 8×16 (label), Helvetica Bold 24 px (angka, ±3,7 mm di panel 0,96"). Anti burn-in: geser 0–2 px tiap siklus, kontras 40/255. OLED tidak menampilkan status alarm (sumber kebenaran tunggal = server). OLED dicek lewat I2C saat boot; bila tidak ada, firmware tetap jalan.
+- Verifikasi (21 Okt 2026, lingkungan replika): `arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all` → tanpa error/peringatan dari kode proyek; program 1.067.860 byte (81% dari 1.310.720), RAM global 51.912 byte (15%). Varian `USE_OLED 0` (78%) dan `OLED_DRIVER_SH1106 1` juga lolos.
+- Simulasi tampilan: fungsi gambar `display.cpp` yang sama dijalankan di PC memakai buffer SSD1306 asli U8g2 → `docs/gambar/oled-simulasi-*.png/gif` (bukan foto perangkat; foto asli diambil setelah uji perangkat).
+- Belum diuji: pembacaan sensor nyata, koneksi WiFi/NTP, pengiriman ke H1, tampilan di panel asli, perilaku antrean saat WiFi diputus.

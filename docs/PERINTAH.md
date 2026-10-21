@@ -13,7 +13,7 @@ Versi induk di Project claude.ai (`claude/perintah-operasional.md`). Dokumen ter
 - Jangan pernah membagikan isi `.env`, token Telegraf, atau token bot Telegram.
 - Jangan mengubah `is_enabled` aturan lewat SQL. Selalu lewat halaman **Aturan**. UPDATE SQL melewati logika reset sehingga data masa nonaktif ikut dievaluasi dan memicu notifikasi basi.
 - Jangan menekan tombol **Kembalikan ke default** dan jangan menjalankan `AlertRuleSeeder` sebelum siap pengujian resmi, karena keduanya mengaktifkan lagi `mem_high` dan `disk_low`.
-- Jangan menjalankan `php artisan serve --host=0.0.0.0`. Dashboard belum punya login, jadi cukup di `127.0.0.1`.
+- `php artisan serve --host=0.0.0.0` hanya dipakai saat ESP32 perlu mengirim data. Aman karena dashboard dibatasi ke komputer server (middleware `RestrictToLocal`); jangan menambah alamat lain ke `DASHBOARD_ALLOWED_IPS` tanpa alasan.
 - Di Git Bash, `php` memakai winpty. Kalau output di-pipe (`|`) atau diarahkan ke file (`>`), pakai **`php.exe`**.
 
 ---
@@ -33,7 +33,11 @@ Restart-Service telegraf-agent    # setelah mengubah telegraf-monitoring.conf
 ```bash
 cd /d/SKRIPSI/PROJECT/monitoring-server
 
-php artisan serve                                   # jendela 1: web + endpoint ingest
+php artisan serve                                   # jendela 1: web + endpoint ingest (hanya dari laptop ini)
+# Fase ESP32 (ESP32 di WiFi harus bisa mengirim data):
+# php artisan serve --host=0.0.0.0 --port=8000
+#   Dashboard tetap hanya bisa dibuka dari laptop ini (http://127.0.0.1:8000) — perangkat lain mendapat 403.
+#   Tambah alamat lain lewat DASHBOARD_ALLOWED_IPS di .env bila perlu (lalu php artisan config:clear).
 php artisan schedule:work                           # jendela 2: evaluator aturan tiap 10 dtk
 php artisan queue:work --queue=notifications --sleep=1   # jendela 3: pengirim Telegram
 npm run dev                                         # jendela 4: aset frontend (Vite)
@@ -113,6 +117,17 @@ php artisan test --order-by=random       # urutan acak (cek tes tidak saling ber
 - Tes memakai `servermonitoring_test` dan menghapus isinya setiap kali jalan. Database pengembangan `servermonitoring` tidak disentuh (tes dibatalkan bila nama database tidak berakhiran `_test`).
 - Tes tidak mengirim pesan Telegram (token palsu, HTTP diblokir/dipalsukan).
 - Jalankan `php artisan test` setiap selesai mengubah kode, sebelum commit.
+
+## 3b. ESP32 (fase ESP32)
+Panduan lengkap: `firmware/esp32-dht22/README.md`.
+```bash
+php artisan source:create esp32-01 esp32        # sekali; token tampil sekali → secrets.h
+php artisan serve --host=0.0.0.0 --port=8000    # agar ESP32 di WiFi bisa mengirim
+```
+```powershell
+ipconfig                                         # IPv4 WiFi laptop → SERVER_URL di secrets.h
+New-NetFirewallRule -DisplayName "Laravel 8000 (ESP32)" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
+```
 
 ## 4. Log
 
