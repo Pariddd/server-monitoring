@@ -1,11 +1,12 @@
 # Keputusan Desain Sistem (berlaku sejak 20 Oktober 2026)
 
-Terakhir diperbarui: 21 Oktober 2026 malam (keputusan Tahap 8).
+Terakhir diperbarui: 22 Oktober 2026 (fokus pindah ke Judul 1).
 Detail implementasi (skema, angka, bug): `CATATAN-IMPLEMENTASI.md`. Perintah operasional: `PERINTAH.md`.
 Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`); salinan di repo `docs/` diperbarui setiap tahap selesai.
 
 ## Ruang lingkup
-- Skripsi mengikuti judul yang sudah di-ACC: "Rancang Bangun Sistem Monitoring Resource Server dan Kondisi Lingkungan Ruang Server Berbasis Laravel, Telegraf, dan ESP32 dengan Notifikasi".
+- **Sejak 22 Okt 2026 fokus Judul 1**: "Rancang Bangun Sistem Monitoring Resource Server Berbasis Laravel dan Telegraf dengan Notifikasi Telegram" (lihat bagian "Perubahan fokus judul").
+- Judul 2 (cadangan, dapat dipakai kembali): "Rancang Bangun Sistem Monitoring Resource Server dan Kondisi Lingkungan Ruang Server Berbasis Laravel, Telegraf, dan ESP32 dengan Notifikasi". Kedua judul sudah di-ACC.
 - Perbandingan dengan Sistem A (Telegraf + InfluxDB + Grafana) DIHAPUS sepenuhnya dari skripsi. Grafana dan InfluxDB tidak dipakai.
 - Urutan pengerjaan: backend Laravel + Telegraf lebih dulu; ESP32 dikerjakan setelah backend berjalan.
 
@@ -55,7 +56,21 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Firmware: baca tiap 30 dtk (median 3 bacaan berjarak 2,5 dtk), waktu NTP UTC (tidak mengirim sebelum tersinkron), HTTP POST JSON `{temperature, humidity, ts}` + Bearer token, buffer RAM 20 data (±10 menit) dikirim ulang dari yang tertua, sambung ulang WiFi dan restart bila gagal > 5 menit, rahasia di `secrets.h` (gitignore), kode di `firmware/esp32-dht22/`.
 - Keamanan: server dibuka ke LAN (`--host=0.0.0.0`) tetapi dashboard dibatasi ke komputer server (opsi 1: middleware `RestrictToLocal`, `DASHBOARD_ALLOWED_IPS`). Batasan: ESP32 mengirim lewat HTTP tanpa TLS di LAN (token tidak terenkripsi di jaringan lokal); data buffer yang tiba > 2 menit terlambat disimpan tetapi tidak dievaluasi alarm.
 - OLED (disetujui 21 Okt): satu informasi per halaman agar terbaca di layar kecil — SUHU (ikon termometer beranimasi) → KELEMBABAN (ikon tetes beranimasi) → STATUS, masing-masing 5 dtk; teks terkecil ±11 px, angka ±24 px. OLED hanya menampilkan nilai mentah + status koneksi, TIDAK status alarm (agar tidak ada dua sumber kebenaran dengan ambang di server). Task tampilan terpisah (FreeRTOS) agar animasi dan pengiriman tidak saling menghambat. Bisa dimatikan (`USE_OLED 0`). Alasan menambah OLED (di luar rancangan awal): pembacaan lokal di ruang server tetap tersedia saat jaringan/server bermasalah; perlu dicantumkan di daftar perangkat Bab 3.
+- Protokol kirim ESP32: **HTTP** di atas WiFi (bukan MQTT), diputuskan 21 Okt. Alasan: skala 1 sensor/30 dtk tidak butuh broker; HTTP memberi konfirmasi penyimpanan langsung (200/422/401) yang dipakai antrean ulang firmware; satu jalur ingest dengan Telegraf (token, rate limit, validasi) → lebih sedikit komponen dan titik gagal. Pembanding: `14_PUBLIKASI_1757_122-129.pdf` hal. 124 §2.6 (ESP32+DHT22 kirim via HTTP, ambang 27 °C/60%, Telegram). Referensi perbandingan kinerja HTTP vs MQTT belum ada di Project (kata kunci: "MQTT vs HTTP IoT performance comparison"). MQTT = saran pengembangan (banyak sensor, baterai, perintah dua arah).
 - Saran operasional: IP tetap untuk laptop (DHCP reservation) karena alamat server ditulis di firmware.
+
+## Perubahan fokus judul (diputuskan 22 Oktober 2026)
+- Fokus sekarang **Judul 1**: "Rancang Bangun Sistem Monitoring Resource Server Berbasis Laravel dan Telegraf dengan Notifikasi Telegram" (sudah di-ACC bersama Judul 2; pembimbing mengizinkan pindah ke Judul 1 bila Judul IoT sulit).
+- Pemicu: sensor DHT22 rusak (perangkat keras; kelembaban konstan 100 %, terkonfirmasi dengan contoh resmi DHTtester — lihat CATATAN §18).
+- Opsi kembali ke **Judul 2** tetap terbuka. Karena itu kode ESP32 (firmware, endpoint `api/ingest/esp32`, aturan `temp_high`, `humidity_high`, `heartbeat_esp32`, panel "Ruang server") **TIDAK DIHAPUS**.
+- **Batas waktu kembali ke Judul 2 (disetujui pengguna):** paling lambat sebelum naskah proposal diserahkan untuk sempro. Setelah sempro judul tidak diganti lagi; ESP32 menjadi "saran pengembangan" (Bab 5).
+- **Desain penonaktifan (disetujui, opsi A):** saklar `.env` `MONITORING_ENVIRONMENT_ENABLED` (default `false`). Bila `false`: endpoint ESP32 → 404 sebelum cek token, aturan ESP32 dilewati di level kode (bukan hanya `is_enabled`), panel Ruang server dan aturan ESP32 disembunyikan, reset tidak menyentuh aturan ESP32. Ditolak: opsi B (hanya mematikan aturan; panel dan endpoint tetap terbuka) dan opsi C (hapus kode + branch terpisah; merge sulit saat kembali). Detail: CATATAN §19; prosedur: PERINTAH §3c.
+- Penulisan Bab 1–3 Judul 1 dibuat modular: bagian inti (Telegraf, Laravel, mesin alarm, Telegram) tidak mengunci "satu-satunya sumber data adalah agen", agar ESP32 bisa ditambahkan sebagai sumber kedua bila kembali ke Judul 2.
+- Konsekuensi penulisan Judul 1: metode pengembangan Waterfall (bukan Prototyping); Bab II tanpa subbab IoT/ESP32/DHT22/standar ruang server/MAE; kebaruan bertumpu pada mesin alarm (histeresis, durasi tahan, heartbeat, cooldown, retry Telegram) sehingga referensi konsep alerting wajib ditambah; pustaka pembanding terdekat Prabowo dkk. (2025) belum ada file aslinya.
+- Data kelembaban dari sensor rusak tidak dipakai untuk judul mana pun.
+
+## Menjalankan proses saat pengembangan (diputuskan 22 Oktober 2026)
+- Tetap 4 jendela terpisah (`serve`, `schedule:work`, `queue:work --queue=notifications --sleep=1`, `npm run dev`). Usulan mengubah script `composer run dev` (satu perintah dengan `concurrently --kill-others`) DITOLAK pengguna; script bawaan tidak diubah dan tidak boleh dipakai (lihat PERINTAH §1.2).
 
 ## Proses permanen / otomatis (Tahap 9) — DITUNDA (diputuskan 21 Oktober 2026)
 - Untuk tahap sempro (fokus Bab 1–3), sistem tetap dijalankan manual (4 terminal). Otomatisasi baru dikerjakan menjelang seminar hasil (semhas) dan sidang.

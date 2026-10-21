@@ -194,11 +194,14 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 - Tahap 9 (proses permanen) DITUNDA sampai menjelang semhas/sidang (lihat KEPUTUSAN.md); selama sempro sistem dijalankan manual.
 - Fase ESP32 dimulai 21 Okt malam: sisi server disiapkan (pembatasan dashboard lokal); firmware + OLED dibuat dan lolos kompilasi (§18); menunggu uji di perangkat.
 - Berikutnya: firmware ESP32 → (menjelang semhas) Tahap 9 → persiapan & pengujian resmi.
+- **22 Okt 2026: fokus pindah ke Judul 1** (resource server saja) karena DHT22 rusak. Kode ESP32 tidak dihapus; dimatikan dengan saklar `MONITORING_ENVIRONMENT_ENABLED=false` (§19). Kembali ke Judul 2 hanya boleh sebelum naskah proposal diserahkan untuk sempro.
 
 ## 16. Temuan terbuka
 - Sisa [CEK]: lokasi `telegraf.exe` untuk tes manual (lihat `PERINTAH.md` §9).
 - `alerts:latency` memakai `alert_states.created_at` (TIMESTAMP) untuk membuang "kondisi awal". State yang dibuat sebelum koneksi `+00:00` (semua state 1–8, 20 Okt) tersimpan 7 jam lebih awal di kolom itu, sehingga filter kondisi awal lebih longgar untuk data 20 Okt. Tidak berdampak pada pengujian resmi yang memakai `--since` setelah tanggal itu. Opsi perbaikan (belum dilakukan): koreksi satu kali `created_at` state lama, atau ganti acuan ke kolom DATETIME.
 - Token/chat Telegram kosong diperlakukan sebagai error sementara (job diulang sampai 30 menit), bukan gagal permanen — disengaja: bila `.env` diperbaiki dan worker di-restart dalam 30 menit, notifikasi tertunda tetap terkirim.
+
+- **APP_DEBUG=true terlihat dari jaringan** (ditemukan 22 Okt dari respons curl): respons error API memuat `exception`, `file`, dan `trace` lengkap (path `D:\SKRIPSI\...`, versi framework). Karena server berjalan `--host=0.0.0.0`, siapa pun di WiFi yang sama dapat melihatnya (CWE-209, OWASP A05 Security Misconfiguration). Header `X-Powered-By: PHP/8.4.25` juga terbuka. Saran: `APP_DEBUG=false` saat server dibuka ke jaringan (log error tetap di `storage/logs/laravel.log`), `expose_php = Off` di php.ini. Status: menunggu keputusan pengguna.
 
 ## 17. Pengujian otomatis (Tahap 8) [V — lolos di H1 dan di lingkungan replika]
 - Kerangka: Pest 5.3.3 (PHPUnit 13.4.3). Jalankan: `php artisan test`.
@@ -218,19 +221,23 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 | `tests/Feature/Dashboard/DashboardTest.php` | halaman Ringkasan/Detail, JSON `/data/summary` & `/data/servers/{name}`, 404 | 5 |
 | `tests/Unit/ConditionsTest.php` | operator `>` `<` `!=` `==` (batas tidak termasuk, toleransi float), operator tak dikenal, format angka label | 14 |
 | `tests/Feature/Dashboard/LocalAccessTest.php` | dashboard hanya dari 127.0.0.1/::1, 7 halaman/aksi ditolak dari LAN (403), aturan tidak berubah saat ditolak, X-Forwarded-For palsu, DASHBOARD_ALLOWED_IPS (CIDR), API ESP32 tetap diterima dari LAN | 13 |
-| **Total** | | **127 tes, 774 asersi** (114 per 21 Okt sore + 13 akses lokal) |
+| `tests/Feature/EnvironmentFeatureTest.php` | saklar fitur lingkungan: saat `false` endpoint ESP32 → 404 sebelum cek token (last_seen_at tidak berubah), Telegraf tetap diterima, aturan ESP32 tidak dievaluasi walau `is_enabled = 1` (aturan host tetap FIRING), state ESP32 FIRING yang tertinggal tidak memicu REPEAT, `/data/summary` tanpa room/alert/aturan nonaktif ESP32, panel Ruang server & aturan ESP32 tidak dirender, PUT aturan ESP32 tersembunyi ditolak tanpa menyimpan apa pun, form berisi aturan host saja tersimpan, reset tidak menyentuh aturan ESP32; saat `true` semua tampil dan ESP32 diterima | 12 |
+| **Total** | | **139 tes, 827 asersi** (114 per 21 Okt sore + 13 akses lokal + 12 saklar fitur) |
 
 - **Hasil di H1 (21 Okt 2026, 21:42 WIB): `php artisan test` → 114 passed (757 assertions), durasi 36,65 dtk** (Windows, PHP 8.4.25 ZTS, MySQL DBngin, database `servermonitoring_test`). Tes terlama: tes pertama Feature 6,71 dtk (termasuk migrasi awal `RefreshDatabase`), blokir HTTP 3,75 dtk, uji akhir-ke-akhir 1,25 dtk; sisanya < 1 dtk.
-- Penambahan 21 Okt malam (`LocalAccessTest`, 13 tes): lolos di replika, total 127 tes / 774 asersi; **menunggu dijalankan ulang di H1**.
+- Penambahan 21 Okt malam (`LocalAccessTest`, 13 tes): lolos di replika, total 127 tes / 774 asersi.
+- Penambahan 22 Okt (`EnvironmentFeatureTest`, 12 tes): lolos di replika → **139 lolos, 827 asersi, ±7,6 dtk**; **menunggu dijalankan di H1**.
+- Semua tes lain dijalankan dengan fitur lingkungan **aktif** (`tests/TestCase.php` mengisi `monitoring.features.environment = true`), sehingga hasil tes tidak bergantung pada isi `.env` H1.
 - Hasil di lingkungan replika (21 Okt 2026): PHP 8.4.26, MySQL 8.0.46, Laravel 13.38.0, dependensi dari `composer.lock` proyek → **114 lolos, 0 gagal, ±7 dtk**; lolos juga dalam urutan acak (`--order-by=random`, 2×).
 - Bukti tes regresi benar-benar mendeteksi bug (mutation check manual): mengembalikan kode bug #6 → 2 tes gagal; bug #10 → 1 tes gagal (`'10:00:45'` ≠ `'10:00:44'`); menghapus cast `last_sample_at` (bug #2) → 2 tes gagal; tanpa perbaikan bug #12 → tes rate limit gagal.
 - Catatan metodologi untuk Bab 4: pengujian otomatis melengkapi (bukan menggantikan) pengujian black-box manual dan pengukuran latensi; tes membuktikan logika pada kasus batas yang sulit dibuat manual (429, 4xx, data terlambat, durasi 59 vs 60 dtk). Tes memakai data sintetis dan Telegram palsu, sehingga TIDAK mengukur latensi nyata.
 
 
-## 18. Firmware ESP32 + DHT22 + OLED [R — lolos kompilasi; belum diuji di perangkat]
+## 18. Firmware ESP32 + DHT22 + OLED [V sebagian — jalan di perangkat (DHT22 saja), 21–22 Okt 2026]
 Lokasi: `firmware/esp32-dht22/esp32-dht22.ino` — **satu berkas** (permintaan pengguna 21 Okt; sebelumnya dipecah ke beberapa `.cpp/.h`). Panduan: `firmware/esp32-dht22/README.md`.
 Susunan berkas: (1) RAHASIA — WiFi, `SERVER_URL`, `SOURCE_TOKEN`; dipakai dari `secrets.h` bila berkas itu ada (`__has_include`, `secrets.h` di-gitignore), (2) PENGATURAN, (3) tipe data & global (semua tipe sebelum fungsi pertama agar prototipe otomatis Arduino IDE benar; tanpa template), (4)–(8) status bersama, antrean, sensor, WiFi/NTP, kirim HTTP, (9) OLED (task FreeRTOS core 0), (10) `setup()`/`loop()`. Status bersama dilindungi critical section `portMUX`.
 
+- **Status perangkat (21 Okt malam): hanya DHT22 (`USE_OLED 0`) karena belum ada breadboard; DHT22 disambung langsung dengan kabel jumper female-to-female. OLED akan dipasang kemudian (ubah `USE_OLED 1`). Kode OLED tetap ada dan sudah lolos kompilasi.** Varian tanpa OLED: program 1.052.076 byte (80%), RAM 50.688 byte (15%).
 - Perangkat: ESP32 Dev Module (ESP32-WROOM-32); DHT22 modul 3 pin → GPIO4 (3V3); OLED 0.96" I2C 4 pin → SDA GPIO21, SCL GPIO22 (3V3), alamat 0x3C, driver SSD1306/SSD1315 (opsi SH1106 lewat `OLED_DRIVER_SH1106`).
 - Library: core esp32 (Espressif) 3.3.12, DHT sensor library 1.4.7, Adafruit Unified Sensor 1.1.15, U8g2 2.37.1.
 - Alur tiap 30 dtk: DHT22 dibaca 3× berjarak 2,5 dtk → median (pembulatan 0,1) → bila jam NTP tersinkron (UTC), masuk antrean RAM (ring buffer 20) → dikirim dari yang tertua `POST /api/ingest/esp32` `{temperature, humidity, ts}` + `Authorization: Bearer`; maks 10 kirim per siklus; berhenti pada kegagalan pertama agar urutan terjaga.
@@ -239,4 +246,27 @@ Susunan berkas: (1) RAHASIA — WiFi, `SERVER_URL`, `SOURCE_TOKEN`; dipakai dari
 - OLED: halaman SUHU (animasi termometer, skala 15–35 °C) → KELEMBABAN (animasi tetes) → STATUS (WiFi, server, jam WIB/antrean), masing-masing 5 dtk; halaman "DHT22 ERROR" menggantikan SUHU/KELEMBABAN saat sensor gagal. Pita atas 16 px: label + ikon WiFi, titik server (penuh = terkirim), jumlah antrean/`!`. Font: Terminus bold 8×16 (label), Helvetica Bold 24 px (angka, ±3,7 mm di panel 0,96"). Anti burn-in: geser 0–2 px tiap siklus, kontras 40/255. OLED tidak menampilkan status alarm (sumber kebenaran tunggal = server). OLED dicek lewat I2C saat boot; bila tidak ada, firmware tetap jalan.
 - Verifikasi (21 Okt 2026, lingkungan replika, memakai ctags Arduino 5.8-arduino11 untuk prototipe `.ino`): `arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all` → tanpa error/peringatan dari kode proyek; program 1.068.364 byte (81% dari 1.310.720), RAM global 51.912 byte (15%). Varian `USE_OLED 0` (80%), `OLED_DRIVER_SH1106 1`, dan jalur `secrets.h` juga lolos (URL dari `secrets.h` terbukti terpakai di biner).
 - Simulasi tampilan: fungsi gambar OLED yang sama (isi bagian 9 identik dengan versi uji simulasi) dijalankan di PC memakai buffer SSD1306 asli U8g2 → `docs/gambar/oled-simulasi-*.png/gif` (bukan foto perangkat; foto asli diambil setelah uji perangkat).
-- Belum diuji: pembacaan sensor nyata, koneksi WiFi/NTP, pengiriman ke H1, tampilan di panel asli, perilaku antrean saat WiFi diputus.
+- **Uji perangkat pertama (21 Okt 2026, 23:59 WIB)** [V]: ESP32 Dev Module + DHT22 (tanpa OLED), WiFi 2,4 GHz, server `http://192.168.1.36:8000` (`serve --host=0.0.0.0`). Serial: `[HTTP] 200 {"temperature":28.9,"humidity":100.0,"ts":1792601960} {"stored":2}`; `ts` = 23:59:20 WIB, cocok dengan jam Serial Monitor (23:59:20.579) → NTP & stempel waktu UTC benar. Setelah reset ESP32, siklus pertama mencatat `[NTP] jam belum sinkron` (sesuai rancangan: data siklus itu tidak dikirim).
+- **Temuan sensor**: kelembaban terbaca tetap **100,0 %RH** (suhu 28,8–28,9 °C wajar). Rentang DHT22 0–100 %RH; nilai tepat 100,0 yang menetap mengindikasikan sensor jenuh (embun) atau sensor bermasalah/tiruan — perlu dicek (warna modul putih = DHT22/AM2302, biru = DHT11), dikeringkan, dan dibandingkan dengan higrometer. Data 100 % akan memicu `humidity_high` (> 60 % selama 60 dtk) — perilaku sistem benar terhadap masukan, tetapi masukannya dicurigai salah.
+- **Isolasi penyebab (22 Okt 2026, 00:17 WIB)** [V]: modul berwarna putih (DHT22/AM2302); ditiup tidak mengubah nilai; contoh resmi library *DHT sensor library → DHTtester* (DHTPIN 4, DHTTYPE DHT22, 9600 baud) juga membaca `Humidity: 100.00%  Temperature: 28.40°C` terus-menerus → kelainan berasal dari **perangkat keras sensor (elemen kelembaban)**, bukan firmware/server. Tindak lanjut: keringkan beberapa jam; bila tetap 100 %, ganti DHT22. Data kelembaban sebelum sensor diganti TIDAK dipakai sebagai hasil penelitian.
+- Diagnosis koneksi: IP WiFi H1 = 192.168.1.36 (adapter `Ethernet 2` 192.168.56.1 = VirtualBox Host-Only, bukan untuk ESP32); `curl` tanpa token dari IP WiFi → 401 dengan `X-RateLimit-Limit: 300` (urutan throttle IP → auth terbukti di server nyata). Aturan firewall dibuat dari PowerShell Administrator.
+- Temuan keamanan kecil: header `X-Powered-By: PHP/8.4.25` (CWE-200; perbaikan `expose_php = Off`), `Access-Control-Allow-Origin: *` bawaan Laravel untuk `api/*` (risiko rendah karena autentikasi Bearer, bukan cookie).
+- Belum diuji: tampilan OLED di panel asli, perilaku antrean saat WiFi/server diputus, heartbeat ESP32, alarm suhu/kelembaban sampai Telegram.
+
+## 19. Saklar fitur lingkungan ruang server (22 Okt 2026) [V — replika; endpoint 404 terverifikasi di H1]
+Latar: fokus skripsi pindah ke Judul 1 (resource server saja) setelah DHT22 rusak (§18); opsi kembali ke Judul 2 tetap terbuka sampai sebelum naskah proposal diserahkan. Desain dipilih pengguna: **opsi A (saklar `.env`)**; ditolak: B (hanya mematikan aturan — panel Ruang server dan endpoint tetap terbuka), C (hapus kode di `main` + branch `judul-2` — branch makin berbeda, kembali = merge sulit).
+
+| Bagian | `MONITORING_ENVIRONMENT_ENABLED=false` (Judul 1, default) | `true` (Judul 2) |
+|---|---|---|
+| `POST /api/ingest/esp32` | 404 JSON; middleware `feature.environment` dipasang SEBELUM `source.auth:esp32` → token tidak diperiksa, `last_seen_at` tidak berubah | seperti biasa (200/401/403/422) |
+| Mesin alarm (`AlertEngine`) | aturan & sumber bertipe `esp32` dilewati di level kode walaupun `is_enabled = 1` → tidak ada transisi, notifikasi, atau REPEAT | dievaluasi |
+| Dashboard Ringkasan | panel "Ruang server" dan tombol pintasnya tidak dirender (Blade `@if`); teks "Semua server normal"; JSON `/data/summary`: `room = null`, alert & daftar aturan nonaktif hanya dari host, `features.environment = false` | lengkap |
+| Halaman Aturan | grup "Ruang server (ESP32)" dan `heartbeat_esp32` tidak ditampilkan; PUT dengan id aturan ESP32 → "Aturan tidak dikenal" (tidak ada yang disimpan); tombol reset hanya mengembalikan aturan host | lengkap |
+| `source:create … esp32` | tetap bisa; menampilkan peringatan bahwa endpoint 404 sampai fitur aktif | normal |
+
+Berkas: `app/Support/Features.php` (baru: `environment()`, `sourceTypes()`), `app/Http/Middleware/EnsureEnvironmentFeature.php` (baru), `config/monitoring.php` (`features.environment`), `bootstrap/app.php` (alias `feature.environment`), `routes/api.php`, `AlertEngine.php`, `SummaryBuilder.php`, `DashboardController.php`, `RuleController.php`, `AlertRuleSeeder::run(?array $sourceTypes = null)`, `CreateSource.php`, `dashboard/index.blade.php`, `rules/edit.blade.php`, `.env.example`, `tests/TestCase.php`, `tests/Feature/EnvironmentFeatureTest.php` (baru, 12 tes).
+
+Verifikasi H1 (22 Okt 2026, 00:54 WIB) [V]: `curl -i -X POST http://127.0.0.1:8000/api/ingest/esp32` → `HTTP/1.1 404 Not Found`, exception dilempar dari `EnsureEnvironmentFeature.php` baris 19 (sebelum `source.auth`). Dashboard tanpa panel Ruang server dan halaman Aturan tanpa grup ESP32 — dikonfirmasi pengguna di H1 (22 Okt, 01:00 WIB) [V]. Belum dilaporkan: `php artisan test` di H1.
+
+Keterbatasan yang disadari: saklar tidak mengubah isi database. State aturan ESP32 yang sedang FIRING saat saklar dimatikan akan tetap FIRING di database (tidak ditampilkan dan tidak memicu notifikasi selama saklar `false`). Karena itu prosedur pindah (PERINTAH §3c) mewajibkan aturan ESP32 dimatikan lewat halaman Aturan SEBELUM saklar diubah ke `false` (halaman Aturan me-reset state ke NORMAL), dan diaktifkan lagi lewat halaman Aturan SETELAH saklar `true` (menggeser `last_sample_at`, bug #6).
+

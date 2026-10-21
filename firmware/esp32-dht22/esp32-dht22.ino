@@ -68,7 +68,7 @@
 #define DEVICE_HOSTNAME "esp32-01"
 
 // OLED
-#define USE_OLED           1          // 0 = tanpa OLED (firmware tetap jalan normal)
+#define USE_OLED           0          // 0 = tanpa OLED (saat ini: belum ada breadboard); ubah ke 1 bila OLED dipasang
 #define OLED_DRIVER_SH1106 0          // 0 = SSD1306/SSD1315 (umum 0.96"), 1 = SH1106 (bila gambar bergeser)
 #define OLED_I2C_ADDR      0x3C       // umumnya 0x3C; sebagian modul 0x3D
 #define OLED_CONTRAST      40         // 0..255; rendah = umur panel lebih panjang

@@ -6,6 +6,10 @@ ditentukan oleh server, bukan oleh ESP32.
 
 ## 1. Rangkaian
 
+**Status saat ini: hanya DHT22** (`USE_OLED 0`, belum ada breadboard). Saat OLED siap dipasang, ubah `USE_OLED` menjadi `1` lalu upload ulang.
+
+Tanpa breadboard: sambungkan modul DHT22 langsung ke pin ESP32 memakai kabel jumper **female-to-female** (3 kabel). Karena OLED belum dipakai, pin 3V3 dan GND ESP32 cukup untuk DHT22 saja.
+
 | Komponen | Pin komponen | ESP32 Dev Module |
 |---|---|---|
 | DHT22 (modul 3 pin) | VCC / + | 3V3 |

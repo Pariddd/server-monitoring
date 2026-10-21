@@ -8,9 +8,16 @@ use Illuminate\Database\Seeder;
 
 class AlertRuleSeeder extends Seeder
 {
-    public function run(): void
+    /**
+     * @param  list<string>|null  $sourceTypes  batasi ke jenis sumber tertentu (null = semua aturan)
+     */
+    public function run(?array $sourceTypes = null): void
     {
         foreach (config('monitoring.rules') as $key => $def) {
+            if ($sourceTypes !== null && ! in_array($def['source_type'], $sourceTypes, true)) {
+                continue;
+            }
+
             $rule = AlertRule::firstOrNew(['key' => $key]);
             $rule->fill([
                 'kind' => $def['kind'],

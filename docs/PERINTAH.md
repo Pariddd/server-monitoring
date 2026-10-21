@@ -44,6 +44,8 @@ npm run dev                                         # jendela 4: aset frontend (
 ```
 Dashboard: http://127.0.0.1:8000
 
+> **Jangan pakai `composer run dev`.** Script bawaan Laravel itu tidak menjalankan `schedule:work` (tidak ada evaluasi alarm), memakai `queue:listen` tanpa `--queue=notifications` (job Telegram tidak pernah diproses, lalu gagal setelah 30 menit), dan `serve` hanya di 127.0.0.1. Pengguna memilih tetap 4 jendela terpisah (22 Okt 2026).
+
 ### 1.3 Kapan perlu restart
 | Yang diubah | Yang perlu dilakukan |
 |---|---|
@@ -108,7 +110,7 @@ CREATE DATABASE servermonitoring_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unic
 
 ```bash
 php artisan config:clear                 # wajib bila pernah config:cache
-php artisan test                         # semua tes (±114 tes)
+php artisan test                         # semua tes (±139 tes)
 php artisan test --compact               # ringkas
 php artisan test tests/Feature/Alerting  # satu folder
 php artisan test --filter="hysteresis"   # tes yang namanya mengandung kata tertentu
@@ -128,6 +130,24 @@ php artisan serve --host=0.0.0.0 --port=8000    # agar ESP32 di WiFi bisa mengir
 ipconfig                                         # IPv4 WiFi laptop → SERVER_URL di secrets.h
 New-NetFirewallRule -DisplayName "Laravel 8000 (ESP32)" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
 ```
+
+## 3c. Saklar Judul 1 / Judul 2 (fitur lingkungan ESP32)
+Nilai di `.env`: `MONITORING_ENVIRONMENT_ENABLED=false` → Judul 1 (resource server saja); `true` → Judul 2.
+Bila baris itu tidak ada di `.env`, nilainya **false**.
+
+**Pindah ke Judul 1 (mematikan ESP32)** — urutan wajib, agar state ESP32 tidak tertinggal FIRING:
+1. Di `.env` isi `MONITORING_ENVIRONMENT_ENABLED=true` (sementara), lalu `php artisan config:clear`.
+2. Restart `php artisan serve` dan `php artisan schedule:work` (Ctrl+C, jalankan lagi).
+3. Halaman Aturan → matikan `Suhu …`, `Kelembaban …`, `ESP32 tanpa data …` → Simpan.
+4. Ubah `.env` menjadi `MONITORING_ENVIRONMENT_ENABLED=false`, `php artisan config:clear`, restart `serve` dan `schedule:work`.
+5. Cek: dashboard tanpa panel "Ruang server"; halaman Aturan tanpa grup ESP32;
+   `curl -i -X POST http://127.0.0.1:8000/api/ingest/esp32` → `404` (saat `true` hasilnya `401`).
+6. Cabut daya ESP32 (tidak wajib; data yang dikirim hanya dibalas 404).
+
+**Kembali ke Judul 2** (hanya sebelum naskah proposal diserahkan):
+1. Rotasi token dulu: `php artisan source:create esp32-01 esp32 --rotate` → isi ke `secrets.h`/salinan `Documents\Arduino`, upload firmware.
+2. `.env` → `MONITORING_ENVIRONMENT_ENABLED=true`, `php artisan config:clear`, restart `serve` dan `schedule:work`.
+3. Halaman Aturan → aktifkan tiga aturan ESP32 → Simpan (jangan lewat SQL, jangan tombol reset).
 
 ## 4. Log
 
@@ -206,6 +226,7 @@ git log --oneline -5
 
 - [ ] Ruang bebas disk C: dan D: di atas 12%, pemakaian memori di bawah 85%.
 - [ ] Aktifkan `mem_high` dan `disk_low` **lewat halaman Aturan**.
+- [ ] `MONITORING_ENVIRONMENT_ENABLED` di `.env` sesuai judul yang diuji (Judul 1 = `false`).
 - [ ] Backup database (DBeaver → klik kanan database `servermonitoring` → Tools → Dump database), simpan di D:.
 - [ ] Semua proses (bagian 1) berjalan; `queue:work` tidak boleh mati.
 - [ ] Catat waktu mulai (UTC) untuk `--since`.

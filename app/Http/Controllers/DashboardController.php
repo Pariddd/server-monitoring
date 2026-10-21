@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Source;
 use App\Services\Dashboard\SourceDetailBuilder;
 use App\Services\Dashboard\SummaryBuilder;
+use App\Support\Features;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,7 +14,7 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
-        return view('dashboard.index');
+        return view('dashboard.index', ['environment' => Features::environment()]);
     }
 
     public function summary(SummaryBuilder $builder): JsonResponse

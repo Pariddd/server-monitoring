@@ -9,6 +9,7 @@ use App\Models\AlertState;
 use App\Models\Metric;
 use App\Models\Source;
 use App\Jobs\SendTelegramNotification;
+use App\Support\Features;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -26,8 +27,11 @@ class AlertEngine
         $now ??= CarbonImmutable::now('UTC');
         $this->stats = ['samples' => 0, 'transitions' => 0, 'notifications' => 0];
 
-        $rules = AlertRule::where('is_enabled', true)->get();
-        $sources = Source::where('is_active', true)->get()->groupBy('type');
+        // Aturan bersumber ESP32 dilewati bila fitur lingkungan dimatikan, walaupun is_enabled = 1,
+        // agar tidak ada notifikasi Telegram dari fitur yang berada di luar lingkup.
+        $types = Features::sourceTypes();
+        $rules = AlertRule::where('is_enabled', true)->whereIn('source_type', $types)->get();
+        $sources = Source::where('is_active', true)->whereIn('type', $types)->get()->groupBy('type');
 
         foreach ($rules as $rule) {
             foreach ($sources->get($rule->source_type, collect()) as $source) {

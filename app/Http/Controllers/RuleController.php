@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AlertRule;
 use App\Models\AlertState;
+use App\Support\Features;
 use App\Support\RuleLabel;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AlertRuleSeeder;
@@ -18,7 +19,8 @@ class RuleController extends Controller
     public function edit(): View
     {
         return view('rules.edit', [
-            'rules' => AlertRule::orderBy('id')->get()->keyBy('key'),
+            // Aturan ESP32 tidak ditampilkan bila fitur lingkungan dimatikan.
+            'rules' => AlertRule::whereIn('source_type', Features::sourceTypes())->orderBy('id')->get()->keyBy('key'),
             'defaults' => config('monitoring.rules'),
             'defaultCooldown' => config('monitoring.default_cooldown'),
         ]);
@@ -27,7 +29,11 @@ class RuleController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $defs = config('monitoring.rules');
-        $rules = AlertRule::whereIn('key', array_keys($defs))->get()->keyBy('id');
+        // Aturan yang tersembunyi (fitur nonaktif) diperlakukan sebagai "tidak dikenal" agar tidak bisa diubah.
+        $rules = AlertRule::whereIn('key', array_keys($defs))
+            ->whereIn('source_type', Features::sourceTypes())
+            ->get()
+            ->keyBy('id');
         $input = (array) $request->input('rules', []);
 
         $validator = Validator::make($request->all(), [
@@ -133,9 +139,11 @@ class RuleController extends Controller
     {
         DB::transaction(function () {
             // Seeder mengaktifkan semua aturan; aturan yang tadinya nonaktif harus mulai dari data baru.
-            $previouslyDisabled = AlertRule::where('is_enabled', false)->pluck('id')->all();
+            // Hanya aturan yang tampil (sesuai saklar fitur) yang dikembalikan ke default.
+            $types = Features::sourceTypes();
+            $previouslyDisabled = AlertRule::where('is_enabled', false)->whereIn('source_type', $types)->pluck('id')->all();
 
-            (new AlertRuleSeeder)->run();
+            (new AlertRuleSeeder)->run($types);
 
             $nowEnabled = AlertRule::whereIn('id', $previouslyDisabled)
                 ->where('is_enabled', true)

@@ -15,6 +15,7 @@
                     <span class="font-mono text-[44px] font-semibold leading-none" x-text="data ? data.counts.total : '–'">–</span>
                     <span class="text-base text-muted">server dipantau</span>
                 </div>
+                @if ($environment)
                 <a href="#ruang-server" class="inline-flex min-h-11 flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-control bg-white px-3.5 py-1.5 text-graphite no-underline">
                     <span class="text-muted">Ruang server</span>
                     <template x-if="roomState">
@@ -24,6 +25,7 @@
                     </template>
                     <span class="text-sm text-body" x-text="roomReason"></span>
                 </a>
+                @endif
             </div>
 
             <div role="group" aria-label="Komposisi status server, klik untuk memfilter" class="flex">
@@ -56,7 +58,7 @@
                             x-text="`+${attn.length - 5} lainnya, tampilkan di daftar`"></button>
                 </template>
                 <template x-if="data && attn.length === 0">
-                    <span class="font-semibold text-normal">Semua server dan ruang server normal</span>
+                    <span class="font-semibold text-normal">{{ $environment ? 'Semua server dan ruang server normal' : 'Semua server normal' }}</span>
                 </template>
             </div>
         </section>
@@ -240,7 +242,8 @@
         </section>
     </div>
 
-    {{-- ================= RUANG SERVER ================= --}}
+    {{-- ================= RUANG SERVER (hanya bila fitur lingkungan aktif) ================= --}}
+    @if ($environment)
     <aside id="ruang-server" aria-label="Lingkungan ruang server"
            class="sticky top-4 flex min-w-[300px] flex-[0_1_340px] flex-col self-start rounded-md border border-hairline bg-panel">
         <div class="flex flex-col gap-1.5 px-5 pb-3 pt-4">
@@ -312,5 +315,6 @@
             </div>
         </template>
     </aside>
+    @endif
 </div>
 @endsection

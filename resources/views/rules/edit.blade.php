@@ -37,6 +37,8 @@
             @method('PUT')
 
             @foreach ($groups as $title => $keys)
+                {{-- Grup tanpa aturan yang tampil (mis. ESP32 saat fitur lingkungan nonaktif) tidak dirender. --}}
+                @continue(array_filter($keys, fn ($k) => isset($rules[$k])) === [])
                 <section class="rounded-md border border-hairline bg-panel">
                     <h2 class="px-5 py-3.5 text-xl font-semibold">{{ $title }}</h2>
 

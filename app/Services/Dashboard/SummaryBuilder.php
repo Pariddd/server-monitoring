@@ -7,6 +7,7 @@ use App\Models\AlertState;
 use App\Models\Metric;
 use App\Models\Source;
 use App\Services\Alerting\MessageFormatter;
+use App\Support\Features;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -20,7 +21,8 @@ class SummaryBuilder
     {
         $now ??= CarbonImmutable::now('UTC');
 
-        $sources = Source::where('is_active', true)->orderBy('name')->get();
+        $types = Features::sourceTypes();
+        $sources = Source::where('is_active', true)->whereIn('type', $types)->orderBy('name')->get();
         $ids = $sources->pluck('id');
 
         $states = AlertState::with('rule')
@@ -53,9 +55,10 @@ class SummaryBuilder
 
         return [
             'generated_at' => self::iso($now),
+            'features' => ['environment' => Features::environment()],
             'thresholds' => AlertRule::whereIn('key', ['cpu_high', 'mem_high', 'disk_low'])->get()
                 ->mapWithKeys(fn($r) => [['cpu_high' => 'cpu', 'mem_high' => 'mem', 'disk_low' => 'disk'][$r->key] => $r->threshold]),
-            'disabled_rules' => AlertRule::where('is_enabled', false)->orderBy('id')->pluck('name'),
+            'disabled_rules' => AlertRule::where('is_enabled', false)->whereIn('source_type', $types)->orderBy('id')->pluck('name'),
             'counts' => [
                 'total' => $hosts->count(),
                 'FIRING' => $hosts->where('state', 'FIRING')->count(),

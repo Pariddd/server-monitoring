@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Source;
+use App\Support\Features;
 use Illuminate\Console\Command;
 
 class CreateSource extends Command
@@ -38,6 +39,9 @@ class CreateSource extends Command
         );
 
         $this->info("Sumber '{$name}' ({$type}) siap.");
+        if ($type === 'esp32' && ! Features::environment()) {
+            $this->warn('Catatan: fitur lingkungan nonaktif (MONITORING_ENVIRONMENT_ENABLED=false); endpoint ESP32 membalas 404 sampai fitur diaktifkan.');
+        }
         $this->warn('Token di bawah hanya tampil sekali. Simpan di config Telegraf/ESP32, jangan ditempel di chat.');
         $this->line($token);
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateSource;
+use App\Http\Middleware\EnsureEnvironmentFeature;
 use App\Http\Middleware\RestrictToLocal;
 use App\Http\Middleware\ThrottleIngestSource;
 use Illuminate\Foundation\Application;
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'source.auth' => AuthenticateSource::class,
             'source.throttle' => ThrottleIngestSource::class,
+            'feature.environment' => EnsureEnvironmentFeature::class,
         ]);
 
         // Semua route web (dashboard, Aturan, /data/*) hanya untuk alamat yang diizinkan.

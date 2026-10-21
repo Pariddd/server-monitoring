@@ -45,6 +45,10 @@ abstract class TestCase extends BaseTestCase
             'services.telegram.chat_id' => self::FAKE_TELEGRAM_CHAT_ID,
         ]);
 
+        // Tes ditulis untuk sistem lengkap (host + ESP32), tidak bergantung pada isi .env.
+        // Perilaku saat fitur lingkungan dimatikan diuji di tests/Feature/EnvironmentFeatureTest.php.
+        config(['monitoring.features.environment' => true]);
+
         // Setiap request HTTP yang tidak dipalsukan dengan Http::fake() membuat tes gagal.
         Http::preventStrayRequests();
     }

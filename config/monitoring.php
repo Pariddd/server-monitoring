@@ -7,6 +7,14 @@ return [
     'max_age_seconds' => 86400,           // tolak data lebih tua dari 24 jam
   ],
 
+  // Saklar fitur pemantauan lingkungan ruang server (ESP32 + DHT22).
+  // false = Judul 1 (resource server saja): /api/ingest/esp32 → 404, aturan ESP32 tidak dievaluasi,
+  //         panel "Ruang server" dan aturan ESP32 disembunyikan. Kode ESP32 tetap ada.
+  // true  = Judul 2 (resource server + kondisi lingkungan ruang server).
+  'features' => [
+    'environment' => (bool) env('MONITORING_ENVIRONMENT_ENABLED', false),
+  ],
+
   // Alamat yang boleh membuka halaman web (dashboard, Aturan, data polling).
   // Default hanya komputer server. Contoh menambah satu laptop lain atau satu subnet:
   // DASHBOARD_ALLOWED_IPS="127.0.0.1,::1,192.168.1.25" atau "127.0.0.1,::1,192.168.1.0/24"
