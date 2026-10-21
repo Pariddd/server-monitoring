@@ -49,8 +49,14 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Rate limit: batas per IP diperiksa SEBELUM token (lapisan pertama terhadap banjir permintaan), batas per sumber SESUDAH token. Konsekuensi: token salah ikut menghabiskan kuota IP.
 - Token/chat Telegram kosong = error sementara (diulang ≤ 30 menit), bukan gagal permanen.
 
+## Proses permanen / otomatis (Tahap 9) — DITUNDA (diputuskan 21 Oktober 2026)
+- Untuk tahap sempro (fokus Bab 1–3), sistem tetap dijalankan manual (4 terminal). Otomatisasi baru dikerjakan menjelang seminar hasil (semhas) dan sidang.
+- Rancangan yang sudah dianalisis (belum diputuskan): web server Apache + mod_php (PHP TS) sebagai service, scheduler dan worker antrean sebagai service lewat WinSW, MySQL harus jalan tanpa login. Alasan: `artisan serve` menurut dokumentasi PHP tidak untuk produksi, single-thread, dan multi-worker tidak didukung di Windows; antrean yang mati > 30 menit menggagalkan notifikasi.
+- Konsekuensi selama ditunda: pengukuran latensi resmi (Bab 4) jangan diambil dengan `artisan serve` + terminal manual; ambil setelah Tahap 9 selesai agar kondisi uji sama dengan sistem final.
+
 ## TUGAS TERTUNDA sebelum pengujian resmi
 - Aturan memori (`mem_high`, 90/85) dan disk (`disk_low`, 10/12, 60 dtk) SENGAJA DINONAKTIFKAN selama pengembangan (sejak 20–21 Oktober 2026) karena memori H1 sekitar 90–95% dan disk hampir penuh, sehingga terus memicu pesan Telegram.
+- Selesaikan Tahap 9 (proses permanen) sebelum mengambil data latensi resmi.
 - Sebelum pengujian resmi: kosongkan disk C: dan D: sampai ruang bebas di atas 12%, kurangi pemakaian memori sampai di bawah 85%, lalu aktifkan kembali kedua aturan LEWAT HALAMAN ATURAN (jangan dengan UPDATE SQL, karena akan memicu evaluasi ulang data lama). Jangan tekan tombol reset default sebelum siap, karena tombol itu mengaktifkan semua aturan.
 
 ## Catatan kondisi H1 (20–21 Oktober 2026)

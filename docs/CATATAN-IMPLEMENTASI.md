@@ -190,15 +190,16 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 
 ## 15. Status tahap
 - Selesai: 1–6 (fondasi, ingest, Telegraf, alerting, Telegram, latensi), 7a–7e (dashboard + Aturan; di-commit dan di-push ke GitHub 21 Okt).
-- Tahap 8 (pengujian otomatis): tes dibuat dan lolos di lingkungan replika (§17); menunggu dijalankan di H1 lalu commit.
-- Berikutnya: Tahap 9 (proses permanen) → ESP32 → persiapan & pengujian resmi.
+- Tahap 8 (pengujian otomatis): 114 tes lolos di H1 (§17); di-commit dan di-push (dba81f1).
+- Tahap 9 (proses permanen) DITUNDA sampai menjelang semhas/sidang (lihat KEPUTUSAN.md); selama sempro sistem dijalankan manual.
+- Berikutnya: fase ESP32 → (menjelang semhas) Tahap 9 → persiapan & pengujian resmi.
 
 ## 16. Temuan terbuka
 - Sisa [CEK]: lokasi `telegraf.exe` untuk tes manual (lihat `PERINTAH.md` §9).
 - `alerts:latency` memakai `alert_states.created_at` (TIMESTAMP) untuk membuang "kondisi awal". State yang dibuat sebelum koneksi `+00:00` (semua state 1–8, 20 Okt) tersimpan 7 jam lebih awal di kolom itu, sehingga filter kondisi awal lebih longgar untuk data 20 Okt. Tidak berdampak pada pengujian resmi yang memakai `--since` setelah tanggal itu. Opsi perbaikan (belum dilakukan): koreksi satu kali `created_at` state lama, atau ganti acuan ke kolom DATETIME.
 - Token/chat Telegram kosong diperlakukan sebagai error sementara (job diulang sampai 30 menit), bukan gagal permanen — disengaja: bila `.env` diperbaiki dan worker di-restart dalam 30 menit, notifikasi tertunda tetap terkirim.
 
-## 17. Pengujian otomatis (Tahap 8) [V di lingkungan replika; menunggu dijalankan di H1]
+## 17. Pengujian otomatis (Tahap 8) [V — lolos di H1 dan di lingkungan replika]
 - Kerangka: Pest 5.3.3 (PHPUnit 13.4.3). Jalankan: `php artisan test`.
 - Database tes: MySQL terpisah `servermonitoring_test` (bukan SQLite) agar perilaku DATETIME/presisi/enum sama dengan sistem. `RefreshDatabase` memigrasi ulang database tes; tiap tes dalam transaksi yang di-rollback.
 - Pengaman (di `tests/TestCase.php`): tes dibatalkan sebelum migrasi bila database bukan `*_test` (diverifikasi: database pengembangan tetap utuh); token/chat Telegram palsu; `Http::preventStrayRequests()` sehingga tidak ada request keluar yang tidak dipalsukan.
@@ -217,6 +218,7 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 | `tests/Unit/ConditionsTest.php` | operator `>` `<` `!=` `==` (batas tidak termasuk, toleransi float), operator tak dikenal, format angka label | 14 |
 | **Total** | | **114 tes, 757 asersi** |
 
+- **Hasil di H1 (21 Okt 2026, 21:42 WIB): `php artisan test` → 114 passed (757 assertions), durasi 36,65 dtk** (Windows, PHP 8.4.25 ZTS, MySQL DBngin, database `servermonitoring_test`). Tes terlama: tes pertama Feature 6,71 dtk (termasuk migrasi awal `RefreshDatabase`), blokir HTTP 3,75 dtk, uji akhir-ke-akhir 1,25 dtk; sisanya < 1 dtk.
 - Hasil di lingkungan replika (21 Okt 2026): PHP 8.4.26, MySQL 8.0.46, Laravel 13.38.0, dependensi dari `composer.lock` proyek → **114 lolos, 0 gagal, ±7 dtk**; lolos juga dalam urutan acak (`--order-by=random`, 2×).
 - Bukti tes regresi benar-benar mendeteksi bug (mutation check manual): mengembalikan kode bug #6 → 2 tes gagal; bug #10 → 1 tes gagal (`'10:00:45'` ≠ `'10:00:44'`); menghapus cast `last_sample_at` (bug #2) → 2 tes gagal; tanpa perbaikan bug #12 → tes rate limit gagal.
 - Catatan metodologi untuk Bab 4: pengujian otomatis melengkapi (bukan menggantikan) pengujian black-box manual dan pengukuran latensi; tes membuktikan logika pada kasus batas yang sulit dibuat manual (429, 4xx, data terlambat, durasi 59 vs 60 dtk). Tes memakai data sintetis dan Telegram palsu, sehingga TIDAK mengukur latensi nyata.
