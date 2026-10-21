@@ -82,7 +82,7 @@ return [
       'threshold' => 10,
       'recover_operator' => '>',
       'recover_threshold' => 12,
-      'for_seconds' => 0,
+      'for_seconds' => 60,
       'unit' => '%',
       'min' => 0,
       'max' => 100,

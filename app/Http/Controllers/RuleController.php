@@ -175,9 +175,8 @@ class RuleController extends Controller
         ];
 
         if ($skipBacklog) {
-            $values['last_sample_at'] = $now;
+            $values['last_sample_at'] = CarbonImmutable::now('UTC')->format('Y-m-d H:i:s');
         }
-
         AlertState::whereIn('alert_rule_id', $ruleIds)->update($values);
     }
 }
