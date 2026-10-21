@@ -1,7 +1,7 @@
 # Perintah Operasional — monitoring-server
 
 Proyek: `D:\SKRIPSI\PROJECT\monitoring-server`
-Terakhir diperbarui: 21 Oktober 2026 malam
+Terakhir diperbarui: 21 Oktober 2026 malam (ditambah perintah pengujian otomatis)
 Versi induk di Project claude.ai (`claude/perintah-operasional.md`). Dokumen terkait: `CATATAN-IMPLEMENTASI.md`, `KEPUTUSAN.md`.
 
 > Tanda **[CEK]** = belum dipastikan, cek dulu sebelum dipakai.
@@ -80,7 +80,7 @@ Catatan: `--since` memakai waktu **UTC** (WIB dikurangi 7 jam).
 
 ```bash
 php.exe artisan about | grep -i timezone     # harus UTC
-php artisan route:list --path=api            # endpoint ingest
+php artisan route:list --path=api -v         # endpoint ingest + urutan middleware
 php artisan route:list                       # semua route
 php artisan db:table alert_rules             # struktur tabel (ganti nama tabel)
 php artisan migrate:status
@@ -90,10 +90,29 @@ php artisan queue:failed                     # daftar job gagal (Laravel)
 ```
 
 Endpoint ingest (terverifikasi):
-- `POST /api/ingest/telegraf` → `Api\IngestTelegrafController`
-- `POST /api/ingest/esp32` → `Api\IngestEsp32Controller`
+- `POST /api/ingest/telegraf` → `Api\IngestTelegrafController` (middleware: `throttle:ingest-ip` → `source.auth:host` → `source.throttle`)
+- `POST /api/ingest/esp32` → `Api\IngestEsp32Controller` (middleware: `throttle:ingest-ip` → `source.auth:esp32` → `source.throttle`)
 
 ---
+
+## 3a. Pengujian otomatis (Tahap 8)
+
+Prasyarat sekali saja: database tes terpisah.
+```sql
+CREATE DATABASE servermonitoring_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+```bash
+php artisan config:clear                 # wajib bila pernah config:cache
+php artisan test                         # semua tes (±114 tes)
+php artisan test --compact               # ringkas
+php artisan test tests/Feature/Alerting  # satu folder
+php artisan test --filter="hysteresis"   # tes yang namanya mengandung kata tertentu
+php artisan test --order-by=random       # urutan acak (cek tes tidak saling bergantung)
+```
+- Tes memakai `servermonitoring_test` dan menghapus isinya setiap kali jalan. Database pengembangan `servermonitoring` tidak disentuh (tes dibatalkan bila nama database tidak berakhiran `_test`).
+- Tes tidak mengirim pesan Telegram (token palsu, HTTP diblokir/dipalsukan).
+- Jalankan `php artisan test` setiap selesai mengubah kode, sebelum commit.
 
 ## 4. Log
 
@@ -158,7 +177,8 @@ Untuk data skripsi, pakai kolom waktu **DATETIME** (`t_breach`, `t_detected`, `t
 ## 7. Git
 
 ```bash
-git status                 # pastikan .env TIDAK ada di daftar
+php artisan test           # pastikan semua tes lolos sebelum commit
+git status                 # pastikan .env dan inti*.txt TIDAK ada di daftar
 git add -A
 git status
 git commit -m "Pesan commit"

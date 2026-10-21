@@ -1,6 +1,6 @@
 # Keputusan Desain Sistem (berlaku sejak 20 Oktober 2026)
 
-Terakhir diperbarui: 21 Oktober 2026 malam.
+Terakhir diperbarui: 21 Oktober 2026 malam (keputusan Tahap 8).
 Detail implementasi (skema, angka, bug): `CATATAN-IMPLEMENTASI.md`. Perintah operasional: `PERINTAH.md`.
 Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`); salinan di repo `docs/` diperbarui setiap tahap selesai.
 
@@ -42,6 +42,12 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Keandalan pengiriman (persentase terkirim, perilaku saat HTTP 429 atau jaringan putus).
 - Overhead sumber daya Laravel, MySQL, dan Telegraf di H1.
 - Pengujian otomatis (feature test, Tahap 8) sebagai bukti regresi bug yang sudah diperbaiki.
+
+## Pengujian otomatis (diputuskan 21 Oktober 2026)
+- Tahap 8 dikerjakan LENGKAP (8a–8f) dengan Pest; database tes MySQL terpisah `servermonitoring_test` (opsi A), bukan SQLite, demi validitas (perilaku DATETIME/presisi/enum sama dengan sistem yang diuji).
+- Tes tidak boleh menyentuh database pengembangan maupun Telegram asli (guard `_test`, token palsu, blokir HTTP).
+- Rate limit: batas per IP diperiksa SEBELUM token (lapisan pertama terhadap banjir permintaan), batas per sumber SESUDAH token. Konsekuensi: token salah ikut menghabiskan kuota IP.
+- Token/chat Telegram kosong = error sementara (diulang ≤ 30 menit), bukan gagal permanen.
 
 ## TUGAS TERTUNDA sebelum pengujian resmi
 - Aturan memori (`mem_high`, 90/85) dan disk (`disk_low`, 10/12, 60 dtk) SENGAJA DINONAKTIFKAN selama pengembangan (sejak 20–21 Oktober 2026) karena memori H1 sekitar 90–95% dan disk hampir penuh, sehingga terus memicu pesan Telegram.

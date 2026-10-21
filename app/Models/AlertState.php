@@ -20,7 +20,7 @@ class AlertState extends Model
         'last_value',
         'last_notified_at',
         'last_evaluated_at',
-        'last_sample_at' => 'datetime',
+        'last_sample_at',
     ];
 
     protected function casts(): array

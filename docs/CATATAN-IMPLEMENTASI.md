@@ -1,6 +1,6 @@
 # Catatan Implementasi Sistem (as-built) — sumber data untuk penulisan skripsi
 
-Terakhir diperbarui: 21 Oktober 2026 malam (Tahap 7 selesai; skema DB, operator aturan, endpoint, dan perilaku zona waktu diverifikasi).
+Terakhir diperbarui: 21 Oktober 2026 malam (Tahap 8 — pengujian otomatis — dibuat; 2 bug baru ditemukan dan diperbaiki).
 Pendamping: `KEPUTUSAN.md` (keputusan desain dan parameter aturan) dan `PERINTAH.md` (perintah operasional).
 Versi induk disimpan di Project claude.ai (`claude/catatan-implementasi-sistem.md`); salinan di repo `docs/` diperbarui setiap tahap selesai.
 
@@ -98,7 +98,8 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 ## 5. Ingest dan keamanan [V]
 - Endpoint: `POST /api/ingest/telegraf`, `POST /api/ingest/esp32`.
 - Middleware `source.auth` (`AuthenticateSource`): cocokkan hash token Bearer dengan `sources.token_hash`.
-- Rate limit: `ingest-ip` 300/menit, `ingest-source` 120/menit.
+- Rate limit: `ingest-ip` 300/menit per IP (route `throttle:ingest-ip`, berjalan SEBELUM autentikasi) dan `ingest-source` 120/menit per sumber (middleware `source.throttle` = `App\Http\Middleware\ThrottleIngestSource`, berjalan SESUDAH `source.auth`). Urutan per route: `throttle:ingest-ip` → `source.auth:<tipe>` → `source.throttle` (diverifikasi `php artisan route:list --path=api -v`).
+- Permintaan dengan token salah tetap dihitung ke kuota IP (300 percobaan gagal per menit memblokir IP itu selama sisa menit tersebut).
 - Respons API selalu JSON untuk `api/*`; status 400/413/422 tidak di-retry Telegraf.
 - `TelegrafMapper` memetakan metrik Telegraf ke metrik internal (`config/monitoring.php`).
 - `SourcePresence` memperbarui `last_seen_at`, mengabaikan IP loopback (akibatnya IP H1 tidak terisi otomatis).
@@ -140,6 +141,7 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 | Variasi ruang bebas C: | 0,07–4,4 % (D: stabil) | kemungkinan pagefile berubah ukuran; alasan disk_low diberi durasi 60 dtk |
 
 ## 10. Bug yang ditemukan dan diperbaiki (bahan pembahasan Bab 4) [V]
+Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan kode; #12 lewat pengujian otomatis Tahap 8.
 | # | Gejala | Akar masalah | Perbaikan |
 |---|---|---|---|
 | 1 | Telegraf: "outputs.http did not complete within flush interval" | OPcache mati, respons ingest lambat | OPcache + `enable_cli=1` → 50–77 ms |
@@ -152,6 +154,8 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 | 8 | State `disk_low` membeku FIRING saat nonaktif | dinonaktifkan via UPDATE SQL (lewati logika reset) | dirapikan ke NORMAL; status aturan wajib via halaman Aturan |
 | 9 | `created_at` tampak +7 jam dari `t_*` di DBeaver; baris lama tidak | perbedaan TIMESTAMP vs DATETIME + koneksi Laravel belum `+00:00` sebelum 20 Okt | bukan bug aplikasi; data penelitian memakai kolom DATETIME `t_*` |
 | 10 | Satu sampel bisa terlewat tepat sesudah aturan diaktifkan | `last_sample_at` (DATETIME detik) diisi nilai milidetik → dibulatkan ke atas oleh MySQL | nilai dipotong ke detik di `resetStates()` |
+| 11 | `last_sample_at` tidak bisa diisi massal; atribut fiktif `datetime` justru fillable (laten, belum berdampak) | salah tulis `'last_sample_at' => 'datetime'` di `$fillable` `AlertState` | diganti `'last_sample_at'` (ditemukan saat membaca kode untuk Tahap 8) |
+| 12 | Kuota 120/menit ternyata dibagi semua sumber dari IP yang sama, bukan per sumber | Laravel selalu mengurutkan `ThrottleRequests` sebelum middleware biasa, sehingga `throttle:ingest-source` berjalan sebelum `source.auth` dan tidak mengenali sumber (kunci jatuh ke IP) | middleware baru `ThrottleIngestSource` (membungkus `ThrottleRequests` tanpa mewarisinya) + alias `source.throttle`; ditemukan oleh tes otomatis rate limit |
 
 ## 11. Dashboard [V]
 - Halaman: Ringkasan (`/`), Detail host (`/servers/{name}`), Aturan (`/rules`, PUT simpan, POST reset). Data JSON: `/data/summary`, `/data/servers/{name}`.
@@ -185,9 +189,35 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 - Layanan yang dipantau (Spooler, WSearch) adalah objek uji terkendali, bukan layanan kritis server.
 
 ## 15. Status tahap
-- Selesai: 1–6 (fondasi, ingest, Telegraf, alerting, Telegram, latensi), 7a–7e (dashboard + Aturan).
-- Berikutnya: commit Tahap 7 → Tahap 8 (feature test) → Tahap 9 (proses permanen) → ESP32 → persiapan & pengujian resmi.
+- Selesai: 1–6 (fondasi, ingest, Telegraf, alerting, Telegram, latensi), 7a–7e (dashboard + Aturan; di-commit dan di-push ke GitHub 21 Okt).
+- Tahap 8 (pengujian otomatis): tes dibuat dan lolos di lingkungan replika (§17); menunggu dijalankan di H1 lalu commit.
+- Berikutnya: Tahap 9 (proses permanen) → ESP32 → persiapan & pengujian resmi.
 
 ## 16. Temuan terbuka
-- Tidak ada (semua temuan 21 Okt ditutup: zona waktu, presisi `last_sample_at`, operator aturan, endpoint, durasi disk_low).
 - Sisa [CEK]: lokasi `telegraf.exe` untuk tes manual (lihat `PERINTAH.md` §9).
+- `alerts:latency` memakai `alert_states.created_at` (TIMESTAMP) untuk membuang "kondisi awal". State yang dibuat sebelum koneksi `+00:00` (semua state 1–8, 20 Okt) tersimpan 7 jam lebih awal di kolom itu, sehingga filter kondisi awal lebih longgar untuk data 20 Okt. Tidak berdampak pada pengujian resmi yang memakai `--since` setelah tanggal itu. Opsi perbaikan (belum dilakukan): koreksi satu kali `created_at` state lama, atau ganti acuan ke kolom DATETIME.
+- Token/chat Telegram kosong diperlakukan sebagai error sementara (job diulang sampai 30 menit), bukan gagal permanen — disengaja: bila `.env` diperbaiki dan worker di-restart dalam 30 menit, notifikasi tertunda tetap terkirim.
+
+## 17. Pengujian otomatis (Tahap 8) [V di lingkungan replika; menunggu dijalankan di H1]
+- Kerangka: Pest 5.3.3 (PHPUnit 13.4.3). Jalankan: `php artisan test`.
+- Database tes: MySQL terpisah `servermonitoring_test` (bukan SQLite) agar perilaku DATETIME/presisi/enum sama dengan sistem. `RefreshDatabase` memigrasi ulang database tes; tiap tes dalam transaksi yang di-rollback.
+- Pengaman (di `tests/TestCase.php`): tes dibatalkan sebelum migrasi bila database bukan `*_test` (diverifikasi: database pengembangan tetap utuh); token/chat Telegram palsu; `Http::preventStrayRequests()` sehingga tidak ada request keluar yang tidak dipalsukan.
+- Jam dibekukan (`freezeAt`), sampel sintetis tiap 10 dtk pada detik :05 (meniru `collection_offset`).
+
+| Berkas | Cakupan | Jumlah tes |
+|---|---|---|
+| `tests/Feature/InfrastructureTest.php` | DB tes MySQL, migrasi, UTC, token palsu, blokir HTTP, 8 aturan dari config | 6 |
+| `tests/Feature/Alerting/StateMachineTest.php` | NORMAL→PENDING→FIRING→RESOLVED, durasi tahan tepat 60 vs 59 dtk, hysteresis, for=0, operator `<` per volume, layanan `!=`/`==`, REPEAT cooldown 600 dtk, heartbeat 30 dtk, data terlambat, aturan/sumber nonaktif, isi pesan WIB | 25 |
+| `tests/Feature/Alerting/RegressionTest.php` | bug #2, #6 (halaman & tombol reset), #8, #10, #11; ubah ambang tidak me-reset state; perhitungan `alerts:latency` (A/B/C/D, sistem = total − tahan) dan pengecualian REPEAT/gagal/kondisi awal | 9 |
+| `tests/Feature/Ingest/IngestTest.php` | 401/403, hash token, pemetaan Telegraf, idempoten, last_seen_at, validasi stempel waktu, 422, IP loopback, ESP32 (rentang DHT22, NTP), rate limit per sumber (bug #12) & per IP sebelum auth | 19 |
+| `tests/Feature/Notifications/TelegramJobTest.php` | sukses + message_id, 429 → release(retry_after), 4xx → gagal permanen, 5xx → diulang, penyamaran token, failed(), anti-kirim-ganda, config kosong, antrean/backoff/30 mnt, batas 4096 karakter | 11 |
+| `tests/Feature/Notifications/EndToEndTest.php` | API Telegraf → `alerts:evaluate` → job → Telegram (dipalsukan), FIRING & RESOLVED terkirim | 1 |
+| `tests/Feature/Dashboard/RulesPageTest.php` | halaman Aturan tanpa kontrol polling, simpan & label, 13 kasus validasi ditolak (termasuk uji 7e 90/95 dan durasi 5), 5 batas sah, ambang layanan tak bisa diubah, id tak dikenal, sakelar nonaktif, reset | 24 |
+| `tests/Feature/Dashboard/DashboardTest.php` | halaman Ringkasan/Detail, JSON `/data/summary` & `/data/servers/{name}`, 404 | 5 |
+| `tests/Unit/ConditionsTest.php` | operator `>` `<` `!=` `==` (batas tidak termasuk, toleransi float), operator tak dikenal, format angka label | 14 |
+| **Total** | | **114 tes, 757 asersi** |
+
+- Hasil di lingkungan replika (21 Okt 2026): PHP 8.4.26, MySQL 8.0.46, Laravel 13.38.0, dependensi dari `composer.lock` proyek → **114 lolos, 0 gagal, ±7 dtk**; lolos juga dalam urutan acak (`--order-by=random`, 2×).
+- Bukti tes regresi benar-benar mendeteksi bug (mutation check manual): mengembalikan kode bug #6 → 2 tes gagal; bug #10 → 1 tes gagal (`'10:00:45'` ≠ `'10:00:44'`); menghapus cast `last_sample_at` (bug #2) → 2 tes gagal; tanpa perbaikan bug #12 → tes rate limit gagal.
+- Catatan metodologi untuk Bab 4: pengujian otomatis melengkapi (bukan menggantikan) pengujian black-box manual dan pengukuran latensi; tes membuktikan logika pada kasus batas yang sulit dibuat manual (429, 4xx, data terlambat, durasi 59 vs 60 dtk). Tes memakai data sintetis dan Telegram palsu, sehingga TIDAK mengukur latensi nyata.
+
