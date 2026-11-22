@@ -9,7 +9,9 @@ use App\Models\AlertState;
 use App\Models\Metric;
 use App\Models\Source;
 use App\Jobs\SendTelegramNotification;
+use App\Services\Dashboard\HealthBuilder;
 use App\Support\Features;
+use Illuminate\Support\Facades\Cache;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -40,6 +42,9 @@ class AlertEngine
                     : $this->evaluateThreshold($rule, $source, $now);
             }
         }
+
+        // Penanda "evaluator masih hidup" untuk panel Kesehatan sistem.
+        Cache::forever(HealthBuilder::EVALUATOR_KEY, $now->format('Y-m-d H:i:s.v'));
 
         return $this->stats;
     }

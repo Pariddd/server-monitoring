@@ -4,6 +4,7 @@ namespace Tests;
 
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use App\Services\ServerAddress;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -49,8 +50,26 @@ abstract class TestCase extends BaseTestCase
         // Perilaku saat fitur lingkungan dimatikan diuji di tests/Feature/EnvironmentFeatureTest.php.
         config(['monitoring.features.environment' => true]);
 
+        // Deteksi IP server dipalsukan agar tes tidak bergantung pada jaringan mesin tes.
+        // Default: server "offline" (null). Tes yang butuh IP memakai fakeServerIp().
+        $this->fakeServerIp(null);
+
         // Setiap request HTTP yang tidak dipalsukan dengan Http::fake() membuat tes gagal.
         Http::preventStrayRequests();
+    }
+
+    /** Palsukan IP jaringan utama server (null = tidak ada rute / offline). */
+    public function fakeServerIp(?string $ip): void
+    {
+        $this->app->instance(ServerAddress::class, new class($ip) extends ServerAddress
+        {
+            public function __construct(private ?string $fake) {}
+
+            public function primary(): ?string
+            {
+                return $this->fake;
+            }
+        });
     }
 
     protected function tearDown(): void

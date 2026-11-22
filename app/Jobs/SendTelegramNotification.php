@@ -39,7 +39,10 @@ class SendTelegramNotification implements ShouldQueue
             return; // sudah terkirim atau sudah dihapus
         }
 
+        // t_started = awal percobaan ini (ditimpa tiap percobaan). Ruas latensi:
+        // C antrean = t_started − t_queued (termasuk jeda retry), D kirim = t_sent − t_started (HTTP percobaan yang berhasil).
         $n->attempts++;
+        $n->t_started = CarbonImmutable::now('UTC');
         $n->save();
 
         $result = $telegram->sendMessage($n->message);

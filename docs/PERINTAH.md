@@ -74,6 +74,11 @@ php artisan alerts:latency --since="2026-10-21 00:00:00"
 php artisan alerts:latency --since="2026-10-21 00:00:00" --rule=service_down
 php.exe artisan alerts:latency --since="2026-10-21 00:00:00" --csv > latency.csv
 
+# K3: simulasi aturan naif vs mesin alarm (hanya membaca data; tidak menulis DB/Telegram)
+php artisan alerts:simulate --scenario=campuran                 # data sintetis (lonjakan|kedip|osilasi|berkelanjutan|campuran)
+php artisan alerts:simulate --rule=cpu_high --source=server-monitor --from="2026-10-20 00:00:00"   # data nyata (UTC)
+php artisan alerts:simulate --scenario=campuran --csv           # simpan ringkasan ke storage/app/simulate-*.csv
+
 # Telegram
 php artisan telegram:chat-id      # cek chat ID dari pesan terakhir ke bot
 php artisan telegram:test         # kirim pesan uji
@@ -110,7 +115,7 @@ CREATE DATABASE servermonitoring_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unic
 
 ```bash
 php artisan config:clear                 # wajib bila pernah config:cache
-php artisan test                         # semua tes (±139 tes)
+php artisan test                         # semua tes (±168 tes)
 php artisan test --compact               # ringkas
 php artisan test tests/Feature/Alerting  # satu folder
 php artisan test --filter="hysteresis"   # tes yang namanya mengandung kata tertentu

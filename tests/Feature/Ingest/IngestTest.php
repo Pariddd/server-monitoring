@@ -2,6 +2,8 @@
 
 use App\Models\Metric;
 use App\Models\Source;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 /*
 | Tahap 8d — endpoint penerima data: autentikasi token per sumber, pemetaan
@@ -120,6 +122,52 @@ describe('ingest Telegraf', function () {
         postTelegraf($this, $payload, $this->hostToken)->assertJson(['stored' => 1, 'rejected' => 2]);
     });
 
+    it('tidak memperbarui last_seen_at bila semua metrik ditolak (jam host salah)', function () {
+        $future = $this->now->addMinutes(5)->getTimestamp(); // > 60 dtk di masa depan
+        Log::spy();
+
+        postTelegraf($this, telegrafBatch($future), $this->hostToken)
+            ->assertOk()
+            ->assertJson(['stored' => 0, 'rejected' => 6]);
+
+        expect($this->host->fresh()->last_seen_at)->toBeNull()
+            ->and(Metric::count())->toBe(0);
+        Log::shouldHaveReceived('warning')->once();
+    });
+
+    it('tetap memperbarui last_seen_at bila sebagian metrik valid', function () {
+        $payload = telegrafBatch($this->now->getTimestamp());
+        $payload['metrics'][2]['timestamp'] = $this->now->addMinutes(5)->getTimestamp(); // mem ditolak
+
+        postTelegraf($this, $payload, $this->hostToken)->assertJson(['stored' => 3, 'rejected' => 1]);
+
+        expect($this->host->fresh()->last_seen_at)->not->toBeNull();
+    });
+
+    it('mencatat penolakan di log paling banyak sekali per menit per sumber', function () {
+        $future = $this->now->addMinutes(5)->getTimestamp();
+        Log::spy();
+
+        postTelegraf($this, telegrafBatch($future), $this->hostToken)->assertOk();
+        postTelegraf($this, telegrafBatch($future), $this->hostToken)->assertOk();
+
+        Log::shouldHaveReceived('warning')->once();
+    });
+
+    it('heartbeat FIRING bila host terus mengirim data dengan jam salah', function () {
+        Queue::fake(); // notifikasi tidak dikirim di tes ini
+        seedRules();
+        postTelegraf($this, telegrafBatch($this->now->getTimestamp()), $this->hostToken)->assertOk(); // 10:00:06 terakhir valid
+
+        foreach ([10, 20, 30, 40] as $s) {
+            freezeAt($this->now->addSeconds($s));
+            postTelegraf($this, telegrafBatch($this->now->addSeconds($s + 300)->getTimestamp()), $this->hostToken)->assertOk();
+        }
+        evaluateAt($this->now->addSeconds(41));
+
+        expect(stateOf('heartbeat_host')->state)->toBe('FIRING');
+    });
+
     it('menolak nilai field yang bukan angka', function () {
         $payload = ['metrics' => [
             ['name' => 'mem', 'tags' => [], 'fields' => ['used_percent' => 'tinggi'], 'timestamp' => t0()->getTimestamp()],
@@ -138,13 +186,48 @@ describe('ingest Telegraf', function () {
             ->assertStatus(422); // timestamp wajib
     });
 
-    it('mencatat IP sumber kecuali alamat loopback', function () {
-        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
-        expect($this->host->fresh()->ip_address)->toBeNull(); // 127.0.0.1 diabaikan
-
+    it('mencatat IP pengirim untuk host yang mengirim lewat jaringan', function () {
         $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.20']);
+        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
+
+        expect($this->host->fresh()->ip_address)->toBe('192.168.1.20')
+            ->and($this->host->fresh()->ip_updated_at->format('Y-m-d H:i:s'))->toBe('2026-10-21 10:00:06');
+    });
+
+    it('memakai IP jaringan utama server untuk host yang mengirim lewat loopback', function () {
+        $this->fakeServerIp('192.168.1.36');
+
+        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
+
+        expect($this->host->fresh()->ip_address)->toBe('192.168.1.36'); // bukan 127.0.0.1
+    });
+
+    it('mempertahankan IP terakhir bila server sedang offline', function () {
+        $this->fakeServerIp('192.168.1.36');
+        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
+
+        $this->fakeServerIp(null); // tidak ada rute jaringan
         postTelegraf($this, telegrafBatch(t0()->addSeconds(10)->getTimestamp()), $this->hostToken)->assertOk();
-        expect($this->host->fresh()->ip_address)->toBe('192.168.1.20');
+
+        expect($this->host->fresh()->ip_address)->toBe('192.168.1.36');
+    });
+
+    it('memperbarui IP server bila alamat DHCP berubah', function () {
+        $this->fakeServerIp('192.168.1.36');
+        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
+
+        freezeAt(t0()->addSeconds(11));
+        $this->fakeServerIp('192.168.1.50');
+        postTelegraf($this, telegrafBatch(t0()->addSeconds(10)->getTimestamp()), $this->hostToken)->assertOk();
+
+        expect($this->host->fresh()->ip_address)->toBe('192.168.1.50')
+            ->and($this->host->fresh()->ip_updated_at->format('Y-m-d H:i:s'))->toBe('2026-10-21 10:00:16');
+    });
+
+    it('tidak menyimpan 127.0.0.1 bila IP server tidak diketahui', function () {
+        postTelegraf($this, telegrafBatch(t0()->getTimestamp()), $this->hostToken)->assertOk();
+
+        expect($this->host->fresh()->ip_address)->toBeNull();
     });
 });
 

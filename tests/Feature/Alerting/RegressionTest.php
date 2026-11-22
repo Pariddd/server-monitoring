@@ -120,7 +120,7 @@ it('mengubah ambang aturan yang tetap aktif tidak me-reset state-nya', function 
 
 describe('laporan latensi (alerts:latency)', function () {
     /** Buat satu notifikasi terkirim dengan waktu-waktu yang diketahui. */
-    function sentNotification(AlertState $state, string $kind, string $breach, string $detected, string $queued, string $sent): AlertNotification
+    function sentNotification(AlertState $state, string $kind, string $breach, string $detected, string $queued, string $sent, ?string $started = null): AlertNotification
     {
         return AlertNotification::create([
             'alert_state_id' => $state->id,
@@ -131,6 +131,7 @@ describe('laporan latensi (alerts:latency)', function () {
             't_breach' => $breach,
             't_detected' => $detected,
             't_queued' => $queued,
+            't_started' => $started,
             't_sent' => $sent,
         ]);
     }
@@ -147,21 +148,35 @@ describe('laporan latensi (alerts:latency)', function () {
         freezeAt(t0()->addMinutes(5));
     });
 
-    it('menghitung latensi sistem = total − durasi tahan, per ruas B/C/D', function () {
+    it('menghitung latensi sistem = total − durasi tahan, dengan B + C + D = sistem', function () {
         // breach 10:00:05, tahan 60 dtk → FIRING secara data 10:01:05.
-        sentNotification($this->state, 'FIRING', '2026-10-21 10:00:05', '2026-10-21 10:01:11.000', '2026-10-21 10:01:11.005', '2026-10-21 10:01:12.505');
+        // dibuat 10:01:11.005, worker mulai 10:01:11.900, Telegram menerima 10:01:12.505.
+        sentNotification($this->state, 'FIRING', '2026-10-21 10:00:05', '2026-10-21 10:01:11.000', '2026-10-21 10:01:11.005', '2026-10-21 10:01:12.505', '2026-10-21 10:01:11.900');
         sample($this->host, 'cpu_usage', 90, t0()); // received_at = breach + 1 dtk → ruas A = 1 dtk
 
         Artisan::call('alerts:latency');
         $out = Artisan::output();
 
         expect($out)->toContain('1 notifikasi')
+            ->not->toContain('tanpa t_started')
             ->toMatch('/A_ingest\s*\|\s*1\s*\|\s*1,000/')
-            ->toMatch('/B_evaluasi\s*\|\s*1\s*\|\s*6,000/')
-            ->toMatch('/C_antre\s*\|\s*1\s*\|\s*0,005/')
-            ->toMatch('/D_kirim\s*\|\s*1\s*\|\s*1,500/')
-            ->toMatch('/sistem\s*\|\s*1\s*\|\s*7,505/')
+            ->toMatch('/B_evaluasi\s*\|\s*1\s*\|\s*6,005/')
+            ->toMatch('/C_antre\s*\|\s*1\s*\|\s*0,895/')
+            ->toMatch('/D_kirim\s*\|\s*1\s*\|\s*0,605/')
+            ->toMatch('/sistem\s*\|\s*1\s*\|\s*7,505/') // 6,005 + 0,895 + 0,605
             ->toMatch('/total\s*\|\s*1\s*\|\s*67,505/');
+    });
+
+    it('tidak menghitung ruas C/D untuk notifikasi lama tanpa t_started, dan memberi peringatan', function () {
+        sentNotification($this->state, 'FIRING', '2026-10-21 10:00:05', '2026-10-21 10:01:11.000', '2026-10-21 10:01:11.005', '2026-10-21 10:01:12.505');
+
+        Artisan::call('alerts:latency');
+        $out = Artisan::output();
+
+        expect($out)->toContain('1 notifikasi lama tanpa t_started')
+            ->toMatch('/C_antre\s*\|\s*0\s*\|/')
+            ->toMatch('/D_kirim\s*\|\s*0\s*\|/')
+            ->toMatch('/sistem\s*\|\s*1\s*\|\s*7,505/');
     });
 
     it('mengecualikan REPEAT, notifikasi gagal, dan kondisi awal', function () {

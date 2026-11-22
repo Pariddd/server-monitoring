@@ -102,7 +102,7 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 - Permintaan dengan token salah tetap dihitung ke kuota IP (300 percobaan gagal per menit memblokir IP itu selama sisa menit tersebut).
 - Respons API selalu JSON untuk `api/*`; status 400/413/422 tidak di-retry Telegraf.
 - `TelegrafMapper` memetakan metrik Telegraf ke metrik internal (`config/monitoring.php`).
-- `SourcePresence` memperbarui `last_seen_at`, mengabaikan IP loopback (akibatnya IP H1 tidak terisi otomatis).
+- `SourcePresence` memperbarui `last_seen_at` dan IP sumber. Sejak 22 Okt 2026: bila pengirim loopback (`127.0.0.1`/`::1`, yaitu Telegraf di komputer server sendiri), IP yang disimpan = **IP jaringan utama server** dari `App\Services\ServerAddress` (socket UDP "terhubung" ke `8.8.8.8:53` lalu `stream_socket_get_name` → alamat adapter pemegang default route, mis. WiFi `192.168.1.36`, bukan VirtualBox `192.168.56.1`; UDP `connect()` tidak mengirim paket; hasil di-cache 60 dtk). Server offline (tanpa rute) → IP terakhir dipertahankan; `127.0.0.1` tidak pernah disimpan. Dashboard menampilkan IP saja (keputusan pengguna, tanpa label). Sebelumnya IP loopback diabaikan sehingga IP H1 kosong ("IP belum diketahui").
 - Dashboard: form dilindungi CSRF; **dashboard belum memiliki login** (batasan). Sejak 21 Okt (persiapan ESP32): semua route web (`/`, `/servers/*`, `/rules`, `/data/*`) melewati middleware `RestrictToLocal` (ditambahkan ke grup `web` di `bootstrap/app.php`) → hanya alamat di `DASHBOARD_ALLOWED_IPS` (default `127.0.0.1,::1`, mendukung CIDR) yang dapat membuka dashboard; selain itu 403. IP diambil dari REMOTE_ADDR (tanpa trusted proxy), sehingga `X-Forwarded-For` palsu tidak bisa melewatinya. API `/api/ingest/*` tidak terpengaruh (dilindungi token). Dengan ini server boleh dijalankan `php artisan serve --host=0.0.0.0` agar ESP32 di LAN dapat mengirim data.
 - Token tidak pernah dibagikan di chat; `.env` tidak di-commit.
 
@@ -125,8 +125,14 @@ Kolom waktu untuk segmen latensi: B = `t_detected` − (`t_breach` + for); C ≈
 - Perintah: `telegram:chat-id`, `telegram:test`.
 
 ## 8. Definisi latensi [V]
-- Segmen: **A** ingest (sampel diambil → diterima Laravel; `received_at` − `recorded_at`), **B** evaluasi (→ event dibuat, `t_detected`), **C** antrean (`t_queued` → job mulai), **D** kirim (→ `t_sent`).
-- Latensi sistem = B + C + D = total (`t_sent` − `t_breach`) − durasi tahan (`for_seconds`).
+- **Sejak 24 Okt 2026** (perbaikan temuan tinjauan #1; kolom baru `alert_notifications.t_started` datetime(3), diisi di awal SETIAP percobaan job, ditimpa saat retry):
+  - **A** ingest = `received_at` − `t_breach` (sampel pelanggaran diterima Laravel; informatif, bagian dari B).
+  - **B** evaluasi = `t_queued` − (`t_breach` + durasi tahan) (evaluator mendeteksi + baris notifikasi dibuat).
+  - **C** antrean = `t_started` − `t_queued` (tunggu worker, termasuk jeda retry bila ada).
+  - **D** kirim = `t_sent` − `t_started` (HTTP ke Telegram pada percobaan yang berhasil; `t_sent` = saat API Telegram menerima, BUKAN saat pesan tampil di HP — batasan, tulis di Bab 3).
+  - Latensi sistem = B + C + D = total (`t_sent` − `t_breach`) − durasi tahan (`for_seconds`); identitas ini dikunci tes.
+  - Notifikasi lama (sebelum 24 Okt, `t_started` null): C dan D tidak dihitung, `alerts:latency` memberi peringatan.
+- Sebelum 24 Okt: kode menghitung C = `t_queued − t_detected` (±ms) dan D = `t_sent − t_queued` (gabungan tunggu worker + HTTP). Angka informal §9 "C ≈ 5 ms, D ≈ 1,5 dtk" memakai definisi LAMA ini — jangan dikutip sebagai pemisahan antrean vs kirim.
 - `alerts:latency {--since=} {--rule=} {--csv}`: mengecualikan REPEAT dan event kondisi awal; p95 metode nearest-rank; waktu UTC.
 
 ## 9. Hasil pengukuran informal (pengembangan, BUKAN Bab 4) [V]
@@ -183,14 +189,15 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 | Pelengkap: aturan aktif kembali mendeteksi kejadian baru (event 124–126, notif 58–59 sent) | lolos |
 
 ## 14. Batasan dan hal belum dikerjakan (untuk Bab 5)
-- Autentikasi dashboard; IP H1 tidak terisi otomatis (loopback); riwayat IP; pembersihan data lama (pruning); halaman semua event; host kedua (VM Windows Server baru, bukan ECORP-DC).
+- Autentikasi dashboard; IP server = IP adapter pemegang default route (bila ada dua jalur, mis. WiFi + LAN kabel, yang tampil adalah pilihan rute Windows); riwayat IP; pembersihan data lama (pruning); halaman semua event; host kedua (VM Windows Server baru, bukan ECORP-DC).
 - Pengiriman at-least-once; data terlambat diabaikan; jitter timestamp ± 2 dtk; hysteresis disk berbasis persen (bukan GB); durasi tahan disk 60 dtk berarti deteksi disk penuh terlambat ≤ 1 menit.
 - Notifikasi gagal bila worker mati > 30 menit; status aturan harus diubah lewat halaman Aturan; `artisan serve` single-thread (tidak untuk fase pengukuran).
 - Layanan yang dipantau (Spooler, WSearch) adalah objek uji terkendali, bukan layanan kritis server.
 
 ## 15. Status tahap
 - Selesai: 1–6 (fondasi, ingest, Telegraf, alerting, Telegram, latensi), 7a–7e (dashboard + Aturan; di-commit dan di-push ke GitHub 21 Okt).
-- Tahap 8 (pengujian otomatis): 114 tes lolos di H1 (§17); di-commit dan di-push (dba81f1).
+- Tahap 8 (pengujian otomatis): 114 tes lolos di H1 (§17); di-commit dan di-push (dba81f1). Per 22 Okt: 139 tes lolos di H1.
+- Kondisi H1 untuk host kedua (22 Okt): RAM total 8 GB (terpakai ±90–95%); VM Windows Server untuk host kedua BELUM dibuat.
 - Tahap 9 (proses permanen) DITUNDA sampai menjelang semhas/sidang (lihat KEPUTUSAN.md); selama sempro sistem dijalankan manual.
 - Fase ESP32 dimulai 21 Okt malam: sisi server disiapkan (pembatasan dashboard lokal); firmware + OLED dibuat dan lolos kompilasi (§18); menunggu uji di perangkat.
 - Berikutnya: firmware ESP32 → (menjelang semhas) Tahap 9 → persiapan & pengujian resmi.
@@ -203,6 +210,15 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 
 - **APP_DEBUG=true terlihat dari jaringan** (ditemukan 22 Okt dari respons curl): respons error API memuat `exception`, `file`, dan `trace` lengkap (path `D:\SKRIPSI\...`, versi framework). Karena server berjalan `--host=0.0.0.0`, siapa pun di WiFi yang sama dapat melihatnya (CWE-209, OWASP A05 Security Misconfiguration). Header `X-Powered-By: PHP/8.4.25` juga terbuka. Saran: `APP_DEBUG=false` saat server dibuka ke jaringan (log error tetap di `storage/logs/laravel.log`), `expose_php = Off` di php.ini. Status: menunggu keputusan pengguna.
 
+- **Tinjauan kode 24 Okt 2026** (#1 dan #2 DIPERBAIKI 24 Okt malam, disetujui pengguna; #3 dicatat sebagai definisi; #4 DIBUAT 24 Okt — panel Kesehatan sistem, §20; #5 menunggu keputusan):
+  1. Definisi segmen latensi C/D di §8 tidak sama dengan kode `alerts:latency`: kode menghitung C = `t_queued − t_detected` (pembuatan baris notifikasi, ±ms) dan D = `t_sent − t_queued` (MENCAKUP tunggu worker antrean + HTTP Telegram). Tidak ada stempel waktu "job mulai". Usulan: kolom `t_started` diisi di awal `SendTelegramNotification::handle()`.
+     → Diperbaiki: `t_started` + definisi baru di §8.
+  2. `SourcePresence::touch()` dipanggil walau seluruh metrik dalam satu kiriman ditolak (mis. jam host salah > 60 dtk ke depan / > 24 jam ke belakang) → `last_seen_at` tetap segar, heartbeat tidak FIRING, aturan ambang tidak mendapat sampel = kegagalan diam (silent failure). Usulan: perbarui kehadiran hanya bila ≥ 1 baris valid, dan catat peringatan di log bila ada yang ditolak.
+     → Diperbaiki di `IngestTelegrafController`: `touch()` hanya bila ada ≥ 1 metrik valid (duplikat tetap dihitung valid); `Log::warning` maks 1×/menit/sumber (kunci cache `ingest:rejected-logged:{id}`). ESP32 tidak perlu diubah (stempel waktu salah sudah 422 sebelum `touch()`). Dikunci tes: host yang terus mengirim data berjam salah → heartbeat FIRING.
+  3. `t_sent` = waktu API Telegram menerima pesan, bukan waktu pesan tampil di HP penerima. Harus ditulis sebagai definisi/batasan di Bab 3; opsional validasi sebagian dengan ekspor Telegram Desktop.
+  4. Tidak ada pemantauan diri: bila `schedule:work` atau `queue:work` mati, dashboard tetap tampak normal dan alarm tidak pernah terkirim. Usulan: panel kesehatan (evaluasi terakhir, notifikasi tertahan di antrean + umurnya, notifikasi gagal 24 jam).
+  5. Tabel `metrics` tumbuh tanpa batas (±6 baris/10 dtk/host ≈ 51.840 baris/hari/host) sementara disk D: hampir penuh. Usulan: perintah retensi terjadwal (ekspor data uji dulu).
+
 ## 17. Pengujian otomatis (Tahap 8) [V — lolos di H1 dan di lingkungan replika]
 - Kerangka: Pest 5.3.3 (PHPUnit 13.4.3). Jalankan: `php artisan test`.
 - Database tes: MySQL terpisah `servermonitoring_test` (bukan SQLite) agar perilaku DATETIME/presisi/enum sama dengan sistem. `RefreshDatabase` memigrasi ulang database tes; tiap tes dalam transaksi yang di-rollback.
@@ -214,19 +230,26 @@ Bug #1–#10 ditemukan lewat pengujian manual/operasional; #11 lewat tinjauan ko
 | `tests/Feature/InfrastructureTest.php` | DB tes MySQL, migrasi, UTC, token palsu, blokir HTTP, 8 aturan dari config | 6 |
 | `tests/Feature/Alerting/StateMachineTest.php` | NORMAL→PENDING→FIRING→RESOLVED, durasi tahan tepat 60 vs 59 dtk, hysteresis, for=0, operator `<` per volume, layanan `!=`/`==`, REPEAT cooldown 600 dtk, heartbeat 30 dtk, data terlambat, aturan/sumber nonaktif, isi pesan WIB | 25 |
 | `tests/Feature/Alerting/RegressionTest.php` | bug #2, #6 (halaman & tombol reset), #8, #10, #11; ubah ambang tidak me-reset state; perhitungan `alerts:latency` (A/B/C/D, sistem = total − tahan) dan pengecualian REPEAT/gagal/kondisi awal | 9 |
-| `tests/Feature/Ingest/IngestTest.php` | 401/403, hash token, pemetaan Telegraf, idempoten, last_seen_at, validasi stempel waktu, 422, IP loopback, ESP32 (rentang DHT22, NTP), rate limit per sumber (bug #12) & per IP sebelum auth | 19 |
+| `tests/Feature/Ingest/IngestTest.php` | 401/403, hash token, pemetaan Telegraf, idempoten, last_seen_at, validasi stempel waktu, 422, IP pengirim jaringan, IP server untuk loopback (+ offline dipertahankan, DHCP berubah, 127.0.0.1 tidak disimpan), ESP32 (rentang DHT22, NTP), rate limit per sumber (bug #12) & per IP sebelum auth | 23 |
 | `tests/Feature/Notifications/TelegramJobTest.php` | sukses + message_id, 429 → release(retry_after), 4xx → gagal permanen, 5xx → diulang, penyamaran token, failed(), anti-kirim-ganda, config kosong, antrean/backoff/30 mnt, batas 4096 karakter | 11 |
 | `tests/Feature/Notifications/EndToEndTest.php` | API Telegraf → `alerts:evaluate` → job → Telegram (dipalsukan), FIRING & RESOLVED terkirim | 1 |
 | `tests/Feature/Dashboard/RulesPageTest.php` | halaman Aturan tanpa kontrol polling, simpan & label, 13 kasus validasi ditolak (termasuk uji 7e 90/95 dan durasi 5), 5 batas sah, ambang layanan tak bisa diubah, id tak dikenal, sakelar nonaktif, reset | 24 |
 | `tests/Feature/Dashboard/DashboardTest.php` | halaman Ringkasan/Detail, JSON `/data/summary` & `/data/servers/{name}`, 404 | 5 |
 | `tests/Unit/ConditionsTest.php` | operator `>` `<` `!=` `==` (batas tidak termasuk, toleransi float), operator tak dikenal, format angka label | 14 |
+| `tests/Unit/ServerAddressTest.php` | penguraian alamat lokal socket: IPv4 diterima; loopback, `0.0.0.0`, IPv6, bukan-IP → null | 6 |
 | `tests/Feature/Dashboard/LocalAccessTest.php` | dashboard hanya dari 127.0.0.1/::1, 7 halaman/aksi ditolak dari LAN (403), aturan tidak berubah saat ditolak, X-Forwarded-For palsu, DASHBOARD_ALLOWED_IPS (CIDR), API ESP32 tetap diterima dari LAN | 13 |
 | `tests/Feature/EnvironmentFeatureTest.php` | saklar fitur lingkungan: saat `false` endpoint ESP32 → 404 sebelum cek token (last_seen_at tidak berubah), Telegraf tetap diterima, aturan ESP32 tidak dievaluasi walau `is_enabled = 1` (aturan host tetap FIRING), state ESP32 FIRING yang tertinggal tidak memicu REPEAT, `/data/summary` tanpa room/alert/aturan nonaktif ESP32, panel Ruang server & aturan ESP32 tidak dirender, PUT aturan ESP32 tersembunyi ditolak tanpa menyimpan apa pun, form berisi aturan host saja tersimpan, reset tidak menyentuh aturan ESP32; saat `true` semua tampil dan ESP32 diterima | 12 |
-| **Total** | | **139 tes, 827 asersi** (114 per 21 Okt sore + 13 akses lokal + 12 saklar fitur) |
+| `tests/Feature/Dashboard/HealthTest.php` | panel Kesehatan sistem: evaluator belum pernah jalan / sehat ≤ 60 dtk / bermasalah > 60 dtk, antrean kosong / tertua 59 vs 60 dtk, notifikasi gagal 24 jam (yang > 24 jam tidak dihitung, token disamarkan), status keseluruhan, JSON `/data/summary` + panel dirender | 6 |
+| `tests/Feature/Alerting/SimulationTest.php` | K3 `alerts:simulate`: skenario lonjakan, kedip, osilasi (S1 vs S2 = efek histeresis), berkelanjutan (tunda = 60 dtk, REPEAT 2×), keluaran perintah campuran, replay data nyata tanpa menulis DB, penolakan heartbeat & skenario tak dikenal | 7 |
+| **Total** | | **168 tes, 939 asersi** (114 per 21 Okt sore + 13 akses lokal + 12 saklar fitur + 10 IP server + 6 perbaikan tinjauan + 6 kesehatan + 7 simulasi) |
 
 - **Hasil di H1 (21 Okt 2026, 21:42 WIB): `php artisan test` → 114 passed (757 assertions), durasi 36,65 dtk** (Windows, PHP 8.4.25 ZTS, MySQL DBngin, database `servermonitoring_test`). Tes terlama: tes pertama Feature 6,71 dtk (termasuk migrasi awal `RefreshDatabase`), blokir HTTP 3,75 dtk, uji akhir-ke-akhir 1,25 dtk; sisanya < 1 dtk.
 - Penambahan 21 Okt malam (`LocalAccessTest`, 13 tes): lolos di replika, total 127 tes / 774 asersi.
-- Penambahan 22 Okt (`EnvironmentFeatureTest`, 12 tes): lolos di replika → **139 lolos, 827 asersi, ±7,6 dtk**; **menunggu dijalankan di H1**.
+- Penambahan 22 Okt (`EnvironmentFeatureTest`, 12 tes): lolos di replika → 139 lolos, 827 asersi, ±7,6 dtk.
+- **Hasil di H1 (22 Okt 2026, ±01:05 WIB): `php artisan test` → 139 passed (827 assertions), durasi 13,84 dtk** (dengan `LocalAccessTest` dan `EnvironmentFeatureTest`).
+- Penambahan 24 Okt malam (B1 panel kesehatan 6 tes, K3 simulasi 7 tes): lolos di replika → **168 lolos, 939 asersi, ±8,7 dtk**; menunggu H1.
+- Penambahan 24 Okt (perbaikan tinjauan #1/#2: 4 tes ingest, 1 tes job `t_started`, 1 tes latensi notifikasi lama; 1 tes latensi diperbarui ke definisi baru): lolos di replika → **155 lolos, 870 asersi, ±6,5 dtk**; menunggu H1. Mutation check: mengembalikan `touch()` tanpa syarat → 2 tes gagal; menghapus pengisian `t_started` → 2 tes gagal.
+- Penambahan 22 Okt (IP server: 5 tes ingest baru menggantikan 1 tes lama + 6 tes unit): lolos di replika → **149 lolos, 843 asersi, ±8 dtk**; menunggu H1. Deteksi IP server dipalsukan di `tests/TestCase.php` (`fakeServerIp()`, default null) agar tes tidak bergantung pada jaringan mesin tes.
 - Semua tes lain dijalankan dengan fitur lingkungan **aktif** (`tests/TestCase.php` mengisi `monitoring.features.environment = true`), sehingga hasil tes tidak bergantung pada isi `.env` H1.
 - Hasil di lingkungan replika (21 Okt 2026): PHP 8.4.26, MySQL 8.0.46, Laravel 13.38.0, dependensi dari `composer.lock` proyek → **114 lolos, 0 gagal, ±7 dtk**; lolos juga dalam urutan acak (`--order-by=random`, 2×).
 - Bukti tes regresi benar-benar mendeteksi bug (mutation check manual): mengembalikan kode bug #6 → 2 tes gagal; bug #10 → 1 tes gagal (`'10:00:45'` ≠ `'10:00:44'`); menghapus cast `last_sample_at` (bug #2) → 2 tes gagal; tanpa perbaikan bug #12 → tes rate limit gagal.
@@ -266,7 +289,35 @@ Latar: fokus skripsi pindah ke Judul 1 (resource server saja) setelah DHT22 rusa
 
 Berkas: `app/Support/Features.php` (baru: `environment()`, `sourceTypes()`), `app/Http/Middleware/EnsureEnvironmentFeature.php` (baru), `config/monitoring.php` (`features.environment`), `bootstrap/app.php` (alias `feature.environment`), `routes/api.php`, `AlertEngine.php`, `SummaryBuilder.php`, `DashboardController.php`, `RuleController.php`, `AlertRuleSeeder::run(?array $sourceTypes = null)`, `CreateSource.php`, `dashboard/index.blade.php`, `rules/edit.blade.php`, `.env.example`, `tests/TestCase.php`, `tests/Feature/EnvironmentFeatureTest.php` (baru, 12 tes).
 
-Verifikasi H1 (22 Okt 2026, 00:54 WIB) [V]: `curl -i -X POST http://127.0.0.1:8000/api/ingest/esp32` → `HTTP/1.1 404 Not Found`, exception dilempar dari `EnsureEnvironmentFeature.php` baris 19 (sebelum `source.auth`). Dashboard tanpa panel Ruang server dan halaman Aturan tanpa grup ESP32 — dikonfirmasi pengguna di H1 (22 Okt, 01:00 WIB) [V]. Belum dilaporkan: `php artisan test` di H1.
+Verifikasi H1 (22 Okt 2026, 00:54 WIB) [V]: `curl -i -X POST http://127.0.0.1:8000/api/ingest/esp32` → `HTTP/1.1 404 Not Found`, exception dilempar dari `EnsureEnvironmentFeature.php` baris 19 (sebelum `source.auth`). Dashboard tanpa panel Ruang server dan halaman Aturan tanpa grup ESP32 — dikonfirmasi pengguna di H1 (22 Okt, 01:00 WIB) [V]. `php artisan test` di H1: 139 passed (827 assertions), 13,84 dtk [V].
 
 Keterbatasan yang disadari: saklar tidak mengubah isi database. State aturan ESP32 yang sedang FIRING saat saklar dimatikan akan tetap FIRING di database (tidak ditampilkan dan tidak memicu notifikasi selama saklar `false`). Karena itu prosedur pindah (PERINTAH §3c) mewajibkan aturan ESP32 dimatikan lewat halaman Aturan SEBELUM saklar diubah ke `false` (halaman Aturan me-reset state ke NORMAL), dan diaktifkan lagi lewat halaman Aturan SETELAH saklar `true` (menggeser `last_sample_at`, bug #6).
+
+## 20. Panel "Kesehatan sistem" — pemantauan diri (24 Okt 2026) [V — replika; menunggu H1]
+Masalah (tinjauan #4): bila `schedule:work` atau `queue:work` mati, dashboard tampak normal tetapi tidak ada alarm yang dievaluasi/dikirim.
+- Lokasi: kotak Ringkasan dashboard, satu baris "Kesehatan sistem" berisi 3 indikator; ikut polling `/data/summary` (kunci `health`); umur bertambah di sisi browser antar-polling.
+- **Evaluator**: `AlertEngine::evaluate()` menulis `Cache::forever('monitoring.evaluator.last_run_at', now)` setiap selesai (cache store sesuai `.env`, di H1 `database`). Sehat bila umur ≤ **60 dtk** (keputusan pengguna 24 Okt; usulan awal 30 dtk). Belum pernah jalan → bermasalah.
+- **Antrean**: notifikasi `status = queued` (termasuk yang menunggu jeda retry): jumlah + umur tertua (`t_queued`). Sehat bila kosong atau tertua < **60 dtk**. Pesan error terakhir (disamarkan) tampil sebagai tooltip.
+- **Gagal 24 jam**: jumlah `status = failed` dengan `t_queued` dalam 24 jam + error terakhir (token disamarkan, maks 160 karakter).
+- Batas di `config/monitoring.php` → `health` (`evaluator_stale_seconds` 60, `queue_stale_seconds` 60, `failed_window_hours` 24).
+- Berkas: `app/Services/Dashboard/HealthBuilder.php` (baru), `AlertEngine.php`, `SummaryBuilder.php`, `config/monitoring.php`, `dashboard/index.blade.php`, `tests/Feature/Dashboard/HealthTest.php` (baru, 6 tes).
+- Batasan: hanya tampil di dashboard; evaluator/worker yang mati tidak bisa mengirim Telegram tentang dirinya. Pemulihan otomatis → Tahap 9.
+
+## 21. K3 — simulasi aturan naif vs mesin alarm sistem (`alerts:simulate`, 24 Okt 2026) [V — replika; menunggu H1]
+Tujuan (kebaruan K3): mengukur pengurangan notifikasi transien/berulang (flapping) beserta harganya (tunda deteksi), pada data yang sama. Hanya membaca data; tidak menulis DB, tidak mengirim Telegram.
+- Berkas: `app/Services/Alerting/Simulation/Simulator.php`, `Scenarios.php`, `app/Console/Commands/SimulateAlerts.php` (semua baru), `tests/Feature/Alerting/SimulationTest.php` (7 tes). Konfigurasi S1–S3 memakai `StateMachine` yang SAMA dengan sistem (di memori).
+- Konfigurasi: **N1** naif per sampel (pesan tiap sampel di atas ambang); **N2** naif persilangan (FIRING saat melewati ambang, RESOLVED saat kembali); **S1** + durasi tahan (ambang pulih = ambang pemicu); **S2** + histeresis (ambang pulih aturan); **S3** sistem lengkap (+ REPEAT tiap cooldown, diukur dengan waktu sampel).
+- "Kejadian" = rangkaian sampel berturut-turut melewati ambang (putus bila jeda > 30 dtk); **berkelanjutan** bila durasi (sampel terakhir − pertama) ≥ durasi tahan, selain itu **transien**. Ini definisi operasional, bukan label "masalah nyata" — karena itu istilah yang dipakai "notifikasi transien/berulang", bukan "alarm palsu". Kebenaran dasar independen dari skenario sintetis.
+- Skenario sintetis (relatif terhadap ambang aturan, sampel tiap 10 dtk): `lonjakan` (6 × 30 dtk), `kedip` (bergantian buruk/tepat di bawah ambang 10 mnt), `osilasi` (6 siklus buruk 60 dtk + abu-abu 10 dtk di antara ambang pulih dan pemicu), `berkelanjutan` (5, 5, 25 mnt), `campuran`.
+- Keluaran per konfigurasi: notifikasi total, pemicu (ALERT/FIRING), RESOLVED, REPEAT, kejadian berkelanjutan terdeteksi (alarm aktif di dalam kejadian), pemicu dari kejadian transien, tunda deteksi rata-rata (dari awal kejadian berkelanjutan ke pemicu baru), pengurangan vs N1 dan vs N2. `--csv` → `storage/app/simulate-*.csv`.
+- Contoh keluaran skenario `campuran` (data SINTETIS, contoh alat — BUKAN hasil penelitian), aturan cpu_high 85/80/60 dtk/600 dtk, 906 sampel, 9 berkelanjutan + 36 transien:
+  | Konf. | Notif total | Pemicu | RESOLVED | REPEAT | Berkelanjutan terdeteksi | Pemicu dari transien | Tunda (dtk) | vs N1 | vs N2 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | N1 | 300 | 300 | 0 | 0 | 9/9 | 48 | 0,0 | 0,0% | −233,3% |
+  | N2 | 90 | 45 | 45 | 0 | 9/9 | 36 | 0,0 | 70,0% | 0,0% |
+  | S1 | 18 | 9 | 9 | 0 | 9/9 | 0 | 60,0 | 94,0% | 80,0% |
+  | S2 | 8 | 4 | 4 | 0 | 9/9 | 0 | 60,0 | 97,3% | 91,1% |
+  | S3 | 10 | 4 | 4 | 2 | 9/9 | 0 | 60,0 | 96,7% | 88,9% |
+- Catatan tafsir: S3 > S2 karena REPEAT adalah pengingat yang disengaja, bukan notifikasi berlebih; harga S1–S3 adalah tunda deteksi = durasi tahan (60 dtk) dan kejadian < 60 dtk tidak dilaporkan (disengaja).
+- Batasan: replay data nyata memakai urutan sampel yang tersimpan; jeda data (host mati) diperlakukan seperti evaluator (durasi tahan dihitung dengan waktu data). REPEAT disimulasikan pada waktu sampel, bukan tiap 10 dtk jam server.
 

@@ -39,6 +39,7 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 
 ## Rencana pengujian (usulan, perlu disetujui pembimbing)
 - Pengujian fungsional (black-box) tiap aturan dan transisi NORMAL, PENDING, FIRING, RESOLVED.
+- Ruas latensi (diputuskan 24 Okt 2026): A ingest, B evaluasi (→ `t_queued`), C antrean (→ `t_started`), D kirim (→ `t_sent`); B + C + D = sistem. `t_sent` = API Telegram menerima (batasan: bukan saat tampil di HP). Detail CATATAN §8.
 - Latensi notifikasi `t_sent - t_breach` dikurangi durasi tahan (rata-rata, median, p95, maksimum) terhadap target yang ditetapkan di awal; perintah `php artisan alerts:latency --since=... --csv`; minimal 20 percobaan per skenario. Catatan: pada event FIRING, `t_breach` = awal pelanggaran, bukan saat FIRING.
 - Keandalan pengiriman (persentase terkirim, perilaku saat HTTP 429 atau jaringan putus).
 - Overhead sumber daya Laravel, MySQL, dan Telegraf di H1.
@@ -59,6 +60,10 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Protokol kirim ESP32: **HTTP** di atas WiFi (bukan MQTT), diputuskan 21 Okt. Alasan: skala 1 sensor/30 dtk tidak butuh broker; HTTP memberi konfirmasi penyimpanan langsung (200/422/401) yang dipakai antrean ulang firmware; satu jalur ingest dengan Telegraf (token, rate limit, validasi) → lebih sedikit komponen dan titik gagal. Pembanding: `14_PUBLIKASI_1757_122-129.pdf` hal. 124 §2.6 (ESP32+DHT22 kirim via HTTP, ambang 27 °C/60%, Telegram). Referensi perbandingan kinerja HTTP vs MQTT belum ada di Project (kata kunci: "MQTT vs HTTP IoT performance comparison"). MQTT = saran pengembangan (banyak sensor, baterai, perintah dua arah).
 - Saran operasional: IP tetap untuk laptop (DHCP reservation) karena alamat server ditulis di firmware.
 
+## JUDUL FINAL PROPOSAL (diputuskan 24 Oktober 2026)
+- Pengguna memilih **Judul 1** sebagai judul final proposal: "Rancang Bangun Sistem Monitoring Resource Server Berbasis Laravel dan Telegraf dengan Notifikasi Telegram". Opsi kembali ke Judul 2 ditutup. ESP32 tetap di kode (saklar `false`) dan menjadi saran pengembangan (Bab 5).
+- Penulisan Bab 1–3 dilanjutkan di chat baru dalam Project yang sama; panduan serah-terima: `claude/panduan-penulisan-bab1-3.md`.
+
 ## Perubahan fokus judul (diputuskan 22 Oktober 2026)
 - Fokus sekarang **Judul 1**: "Rancang Bangun Sistem Monitoring Resource Server Berbasis Laravel dan Telegraf dengan Notifikasi Telegram" (sudah di-ACC bersama Judul 2; pembimbing mengizinkan pindah ke Judul 1 bila Judul IoT sulit).
 - Pemicu: sensor DHT22 rusak (perangkat keras; kelembaban konstan 100 %, terkonfirmasi dengan contoh resmi DHTtester — lihat CATATAN §18).
@@ -68,6 +73,15 @@ Versi induk disimpan di Project claude.ai (`claude/keputusan-sistem-laravel.md`)
 - Penulisan Bab 1–3 Judul 1 dibuat modular: bagian inti (Telegraf, Laravel, mesin alarm, Telegram) tidak mengunci "satu-satunya sumber data adalah agen", agar ESP32 bisa ditambahkan sebagai sumber kedua bila kembali ke Judul 2.
 - Konsekuensi penulisan Judul 1: metode pengembangan Waterfall (bukan Prototyping); Bab II tanpa subbab IoT/ESP32/DHT22/standar ruang server/MAE; kebaruan bertumpu pada mesin alarm (histeresis, durasi tahan, heartbeat, cooldown, retry Telegram) sehingga referensi konsep alerting wajib ditambah; pustaka pembanding terdekat Prabowo dkk. (2025) belum ada file aslinya.
 - Data kelembaban dari sensor rusak tidak dipakai untuk judul mana pun.
+
+## IP host di dashboard (diputuskan 22 Oktober 2026)
+- Kartu host dan halaman Detail menampilkan **IP saja** (tanpa label "server ini", tanpa nama komputer Windows).
+- Host yang mengirim lewat jaringan: IP pengirim (REMOTE_ADDR). Host yang sama dengan server (kirim lewat loopback): IP jaringan utama server yang dideteksi server sendiri (adapter pemegang default route). Ditolak: mengganti URL Telegraf H1 ke IP WiFi (rapuh terhadap DHCP), IP dilaporkan Telegraf `inputs.exec` (ambigu bila banyak adapter, perlu jalur ingest teks).
+- IP bersifat informasi tampilan; tidak dipakai untuk autentikasi (token), evaluasi alarm, atau heartbeat.
+
+## Pemantauan diri dan K3 (diputuskan 24 Oktober 2026)
+- Panel "Kesehatan sistem" di dashboard: evaluator dan antrean dianggap bermasalah bila > 60 dtk (pengguna memilih 60 dtk, bukan 30 dtk); notifikasi gagal dihitung 24 jam. Detail CATATAN §20.
+- K3 dikerjakan sebagai perintah `alerts:simulate` (5 konfigurasi N1, N2, S1, S2, S3; skenario sintetis + replay data nyata). Pembanding naif utama = N2 (persilangan ambang), N1 sebagai batas atas. Istilah di skripsi: "notifikasi transien/berulang", bukan "alarm palsu". Detail CATATAN §21.
 
 ## Menjalankan proses saat pengembangan (diputuskan 22 Oktober 2026)
 - Tetap 4 jendela terpisah (`serve`, `schedule:work`, `queue:work --queue=notifications --sleep=1`, `npm run dev`). Usulan mengubah script `composer run dev` (satu perintah dengan `concurrently --kill-others`) DITOLAK pengguna; script bawaan tidak diubah dan tidak boleh dipakai (lihat PERINTAH §1.2).

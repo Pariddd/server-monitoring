@@ -19,6 +19,7 @@ class AlertNotification extends Model
         't_breach',
         't_detected',
         't_queued',
+        't_started',
         't_sent',
         'telegram_message_id',
         'last_error',
@@ -31,6 +32,7 @@ class AlertNotification extends Model
             't_breach' => 'datetime',
             't_detected' => 'datetime',
             't_queued' => 'datetime',
+            't_started' => 'datetime',
             't_sent' => 'datetime',
             'telegram_message_id' => 'integer',
         ];

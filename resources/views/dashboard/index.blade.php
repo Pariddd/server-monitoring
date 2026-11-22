@@ -28,6 +28,41 @@
                 @endif
             </div>
 
+            {{-- Kesehatan sistem pemantau (evaluator, antrean, notifikasi gagal). Batas dari config monitoring.health. --}}
+            <div role="group" aria-label="Kesehatan sistem" class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
+                 x-data="{
+                    get h() { return data ? data.health : null },
+                    dur(s) { return s < 120 ? `${Math.round(s)} dtk` : `${Math.round(s / 60)} mnt` },
+                    get evalAge() { return this.h && this.h.evaluator.age_seconds !== null ? this.h.evaluator.age_seconds + elapsed : null },
+                    get evalOk() { return this.evalAge !== null && this.evalAge <= this.h.evaluator.limit },
+                    get qAge() { return this.h && this.h.queue.oldest_age_seconds !== null ? this.h.queue.oldest_age_seconds + elapsed : null },
+                    get qOk() { return this.h && (this.h.queue.pending === 0 || this.qAge < this.h.queue.limit) },
+                 }">
+                <span class="font-semibold text-body">Kesehatan sistem</span>
+                <template x-if="h">
+                    <span class="contents">
+                        <span class="inline-flex items-center gap-2" data-health="evaluator">
+                            <span :class="S[evalOk ? 'NORMAL' : 'FIRING'].lampCls + ' ' + S[evalOk ? 'NORMAL' : 'FIRING'].lamp" style="width:8px;height:8px"></span>
+                            <span class="text-muted">Evaluator</span>
+                            <span class="font-mono font-semibold" :class="evalOk ? '' : 'text-firing'"
+                                  x-text="evalAge === null ? 'belum pernah berjalan — periksa schedule:work' : dur(evalAge) + ' lalu' + (evalOk ? '' : ' — periksa schedule:work')"></span>
+                        </span>
+                        <span class="inline-flex items-center gap-2" data-health="queue">
+                            <span :class="S[qOk ? 'NORMAL' : 'FIRING'].lampCls + ' ' + S[qOk ? 'NORMAL' : 'FIRING'].lamp" style="width:8px;height:8px"></span>
+                            <span class="text-muted">Antrean</span>
+                            <span class="font-mono font-semibold" :class="qOk ? '' : 'text-firing'" :title="h.queue.last_error || ''"
+                                  x-text="h.queue.pending === 0 ? '0 tertunda' : `${h.queue.pending} tertunda, tertua ${dur(qAge)}` + (qOk ? '' : ' — periksa queue:work')"></span>
+                        </span>
+                        <span class="inline-flex items-center gap-2" data-health="failed">
+                            <span :class="S[h.failed.ok ? 'NORMAL' : 'FIRING'].lampCls + ' ' + S[h.failed.ok ? 'NORMAL' : 'FIRING'].lamp" style="width:8px;height:8px"></span>
+                            <span class="text-muted" x-text="`Gagal ${h.failed.window_hours} jam`"></span>
+                            <span class="font-mono font-semibold" :class="h.failed.ok ? '' : 'text-firing'" :title="h.failed.last_error || ''"
+                                  x-text="h.failed.count === 0 ? '0' : `${h.failed.count} (terakhir: ${h.failed.last_error || 'tidak diketahui'})`"></span>
+                        </span>
+                    </span>
+                </template>
+            </div>
+
             <div role="group" aria-label="Komposisi status server, klik untuk memfilter" class="flex">
                 <template x-for="g in segs" :key="g.k">
                     <button type="button"

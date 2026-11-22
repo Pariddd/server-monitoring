@@ -58,6 +58,13 @@ return [
     ],
   ],
 
+  // Kesehatan sistem pemantau (panel "Kesehatan sistem" di dashboard). Ambang 60 dtk diputuskan pengguna 24 Okt 2026.
+  'health' => [
+    'evaluator_stale_seconds' => 60, // evaluasi terakhir lebih lama dari ini → periksa schedule:work
+    'queue_stale_seconds' => 60,     // notifikasi tertua di antrean lebih lama dari ini → periksa queue:work
+    'failed_window_hours' => 24,     // jendela hitung notifikasi gagal
+  ],
+
   'default_cooldown' => 600,
 
   'rules' => [

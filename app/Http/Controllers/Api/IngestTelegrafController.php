@@ -9,6 +9,8 @@ use App\Services\TelegrafMapper;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class IngestTelegrafController extends Controller
@@ -41,7 +43,22 @@ class IngestTelegrafController extends Controller
             $stored += Metric::insertOrIgnore($chunk);
         }
 
-        $presence->touch($source, $request, $now);
+        // Kehadiran (last_seen_at, dasar heartbeat) hanya diperbarui bila ada >= 1 metrik valid.
+        // Tanpa ini, host dengan jam salah (semua stempel waktu ditolak) tampak hidup padahal
+        // tidak ada sampel yang dievaluasi: heartbeat diam dan aturan ambang buta (silent failure).
+        if ($rows !== []) {
+            $presence->touch($source, $request, $now);
+        }
+
+        // Catat penolakan di log, paling banyak sekali per menit per sumber agar log tidak membanjir.
+        if ($rejected > 0 && Cache::add("ingest:rejected-logged:{$source->id}", true, 60)) {
+            Log::warning('Ingest Telegraf: metrik ditolak. Periksa jam host (NTP) atau nilai field.', [
+                'source' => $source->name,
+                'received' => count($metrics),
+                'valid' => count($rows),
+                'rejected' => $rejected,
+            ]);
+        }
 
         return response()->json([
             'received' => count($metrics),

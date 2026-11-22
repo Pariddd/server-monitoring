@@ -56,6 +56,7 @@ it('menandai terkirim dan menyimpan message_id saat Telegram menerima pesan', fu
         ->and($n->telegram_message_id)->toBe(4242)
         ->and($n->attempts)->toBe(1)
         ->and($n->t_sent->format('Y-m-d H:i:s'))->toBe('2026-10-21 10:01:05')
+        ->and($n->t_started->format('Y-m-d H:i:s'))->toBe('2026-10-21 10:01:05')
         ->and($n->last_error)->toBeNull();
 
     Http::assertSent(fn(Request $r) => str_ends_with($r->url(), '/sendMessage')
@@ -160,3 +161,22 @@ it('memotong pesan menjadi maksimal 4096 karakter (batas Telegram)', function ()
 
     Http::assertSent(fn(Request $r) => mb_strlen($r['text']) === 4096);
 });
+
+it('mencatat t_started pada setiap percobaan (ruas C antrean / D kirim)', function () {
+    Http::fakeSequence(TG_URL)
+        ->push(['ok' => false, 'description' => 'Bad Gateway'], 502)
+        ->push(['ok' => true, 'result' => ['message_id' => 7]], 200);
+
+    freezeAt('2026-10-21 10:01:12.000');
+    expect(fn () => runJob($this->notification))->toThrow(RuntimeException::class); // 5xx → diulang
+    expect($this->notification->fresh()->t_started->format('H:i:s.v'))->toBe('10:01:12.000');
+
+    freezeAt('2026-10-21 10:01:17.250'); // percobaan ke-2 setelah backoff 5 dtk
+    runJob($this->notification);
+
+    $n = $this->notification->fresh();
+    expect($n->attempts)->toBe(2)
+        ->and($n->t_started->format('H:i:s.v'))->toBe('10:01:17.250') // ditimpa: awal percobaan yang berhasil
+        ->and($n->status)->toBe('sent');
+});
+

@@ -15,7 +15,7 @@ class SummaryBuilder
 {
     public const RANK = ['FIRING' => 0, 'PENDING' => 1, 'NORMAL' => 2];
 
-    public function __construct(private MessageFormatter $formatter) {}
+    public function __construct(private MessageFormatter $formatter, private HealthBuilder $health) {}
 
     public function build(?CarbonImmutable $now = null): array
     {
@@ -56,6 +56,7 @@ class SummaryBuilder
         return [
             'generated_at' => self::iso($now),
             'features' => ['environment' => Features::environment()],
+            'health' => $this->health->build($now),
             'thresholds' => AlertRule::whereIn('key', ['cpu_high', 'mem_high', 'disk_low'])->get()
                 ->mapWithKeys(fn($r) => [['cpu_high' => 'cpu', 'mem_high' => 'mem', 'disk_low' => 'disk'][$r->key] => $r->threshold]),
             'disabled_rules' => AlertRule::where('is_enabled', false)->whereIn('source_type', $types)->orderBy('id')->pluck('name'),

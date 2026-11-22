@@ -45,6 +45,7 @@ class LatencyReport extends Command
                 'm.received_at',
                 'n.t_detected',
                 'n.t_queued',
+                'n.t_started',
                 'n.t_sent',
             ]);
 
@@ -55,12 +56,17 @@ class LatencyReport extends Command
 
         $sec = fn(?string $t) => $t ? CarbonImmutable::parse($t, 'UTC')->getTimestampMs() / 1000 : null;
 
+        // Ruas (detik). B + C + D = sistem. A (ingest) adalah bagian dari B: data harus tiba sebelum dievaluasi.
+        //   A ingest   = received_at − t_breach                  (sampel pelanggaran diterima Laravel)
+        //   B evaluasi = t_queued − (t_breach + tahan)           (evaluator mendeteksi + notifikasi dibuat)
+        //   C antrean  = t_started − t_queued                    (tunggu worker, termasuk jeda retry)
+        //   D kirim    = t_sent − t_started                      (HTTP ke Telegram, percobaan yang berhasil)
         $data = $rows->map(function ($r) use ($sec) {
             $hold = $r->kind === 'FIRING' ? (int) $r->for_seconds : 0;
             $breach = $sec($r->t_breach);
             $received = $sec($r->received_at);
-            $detected = $sec($r->t_detected);
             $queued = $sec($r->t_queued);
+            $started = $sec($r->t_started);
             $sent = $sec($r->t_sent);
 
             return [
@@ -71,13 +77,15 @@ class LatencyReport extends Command
                 'tag' => $r->tag,
                 'hold' => $hold,
                 'A_ingest' => $received !== null ? $received - $breach : null,
-                'B_evaluasi' => $detected - ($breach + $hold),
-                'C_antre' => $queued - $detected,
-                'D_kirim' => $sent - $queued,
+                'B_evaluasi' => $queued - ($breach + $hold),
+                'C_antre' => $started !== null ? $started - $queued : null,
+                'D_kirim' => $started !== null ? $sent - $started : null,
                 'sistem' => $sent - $breach - $hold,
                 'total' => $sent - $breach,
             ];
         });
+
+        $withoutStart = $rows->whereNull('t_started')->count();
 
         $table = [];
         foreach (['A_ingest', 'B_evaluasi', 'C_antre', 'D_kirim', 'sistem', 'total'] as $col) {
@@ -87,6 +95,10 @@ class LatencyReport extends Command
 
         $this->info('Latensi (detik), ' . $data->count() . ' notifikasi');
         $this->table(['Ruas', 'n', 'min', 'rata-rata', 'median', 'p95', 'maks'], $table);
+
+        if ($withoutStart > 0) {
+            $this->warn("{$withoutStart} notifikasi lama tanpa t_started: ruas C dan D tidak dihitung untuk notifikasi tersebut.");
+        }
 
         if ($data->count() < 20) {
             $this->warn('n < 20: p95 belum bermakna secara statistik. Tambah jumlah percobaan.');
